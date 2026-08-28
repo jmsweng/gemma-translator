@@ -111,8 +111,14 @@ function TranslatorApp({ config }) {
   const [lang2Index, setLang2Index] = useState(1)
   const [activeLaneRecording, setActiveLaneRecording] = useState(null) // 1 or 2
 
-  const { isRecording, startRecording, stopRecording, analyser, micError } =
-    useAudioRecorder()
+  const {
+    isRecording,
+    startRecording,
+    stopRecording,
+    warmUp,
+    analyser,
+    micError,
+  } = useAudioRecorder()
 
   useEffect(() => {
     if (micError) {
@@ -239,9 +245,11 @@ function TranslatorApp({ config }) {
         return lane
       })
       setActiveLaneRecording(lane)
-      playBlip("ping")
 
+      // The blip fires *after* capture begins: with pre-roll active, playing it
+      // first would land the ping inside the recorded window.
       const ok = await startRecording()
+      playBlip("ping")
       if (!ok) {
         setActiveLaneRecording(null)
       }
@@ -331,6 +339,11 @@ function TranslatorApp({ config }) {
       if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return
       const key = e.key.toLowerCase()
 
+      // Open the mic on the first interaction and keep it warm on every
+      // subsequent one. Idempotent, and re-arms the 5-minute idle teardown,
+      // so language rotation keeps the stream alive mid-conversation.
+      warmUp()
+
       if (config.keyboardMode === "landscape") {
         if (key === " " || e.key === "Spacebar") {
           e.preventDefault()
@@ -397,6 +410,7 @@ function TranslatorApp({ config }) {
     handleRecordStart,
     handleRecordStop,
     handleRotateLanguage,
+    warmUp,
   ])
 
   return (
