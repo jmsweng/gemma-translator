@@ -16,8 +16,12 @@
 
 import React from "react"
 
-// Result panel: transcription (left bubble) and translation (right bubble)
-// in a chat-style layout, with a first-run placeholder before any recording.
+// Result panel: transcription and translation bubbles in a chat-style layout,
+// with a first-run placeholder before any recording.
+//
+// The bubbles mirror the hardware: whichever lane's push-to-talk button was
+// held gets its transcription on that same side of the screen, and the
+// translation lands on the listener's side. sourceLane 1 = left, 2 = right.
 export default function ResponseDrawer({
   isActive,
   onClose,
@@ -27,9 +31,13 @@ export default function ResponseDrawer({
   translationText,
   metaText,
   placeholderText,
+  sourceLane = 1,
 }) {
   // Determine if we have any data to show (or if the drawer was explicitly activated)
   const hasData = isActive || transcriptionSource !== ""
+
+  const sourceSide = sourceLane === 2 ? "right" : "left"
+  const targetSide = sourceLane === 2 ? "left" : "right"
 
   return (
     <div
@@ -49,8 +57,8 @@ export default function ResponseDrawer({
           </div>
         ) : (
           <>
-            <div className="chat-row chat-row-left">
-              <div className="chat-bubble bubble-left">
+            <div className={`chat-row chat-row-${sourceSide}`}>
+              <div className={`chat-bubble bubble-${sourceSide}`}>
                 <div className="bubble-label">
                   {transcriptionSource || "LANG 1"}
                 </div>
@@ -59,8 +67,10 @@ export default function ResponseDrawer({
                 </div>
               </div>
             </div>
-            <div className="chat-row chat-row-right">
-              <div className="chat-bubble bubble-right">
+            <div className={`chat-row chat-row-${targetSide}`}>
+              <div
+                className={`chat-bubble bubble-${targetSide} bubble-translation`}
+              >
                 <div className="bubble-label">
                   {translationTarget || "LANG 2"}
                 </div>

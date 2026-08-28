@@ -88,6 +88,9 @@ function TranslatorApp({ config }) {
   // Which lane's language picker is open (1, 2, or null). Unused when
   // config.touchLanguageMode is "cycle".
   const [pickerLane, setPickerLane] = useState(null)
+  // Lane whose button produced the result on screen; drives which side of the
+  // drawer the transcription and translation bubbles sit on.
+  const [sourceLane, setSourceLane] = useState(1)
 
   // Translation State
   const [transcriptionData, setTranscriptionData] = useState({
@@ -261,6 +264,7 @@ function TranslatorApp({ config }) {
   // Translation Pipeline
   const processTranslation = async (lane, base64Data) => {
     setIsDrawerOpen(true)
+    setSourceLane(lane)
 
     const src =
       lane === 1
@@ -405,6 +409,7 @@ function TranslatorApp({ config }) {
         translationTarget={translationData.target}
         translationText={translationData.text}
         metaText={metaText}
+        sourceLane={sourceLane}
       />
 
       <main className="translator-workspace">

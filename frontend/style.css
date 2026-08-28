@@ -476,6 +476,9 @@ body {
   position: relative;
 }
 
+/* Side classes control alignment and tail only — either bubble can take
+   either side, depending on which lane spoke. */
+
 /* Left bubble: sharp bottom-left corner (tail) */
 .bubble-left {
   border-bottom-left-radius: 1px;
@@ -486,6 +489,10 @@ body {
 .bubble-right {
   border-bottom-right-radius: 1px;
   box-shadow: 2px 2px 0 var(--red-muted);
+}
+
+/* The translation bubble stays interactive whichever side it lands on. */
+.bubble-translation {
   cursor: pointer;
   transition:
     background 0.15s,
@@ -493,15 +500,15 @@ body {
     border-color 0.15s;
 }
 
-.bubble-right:hover {
+.bubble-translation:hover {
   background: var(--red-muted);
 }
 
-.bubble-right:active {
+.bubble-translation:active {
   background: var(--red-bright);
 }
-.bubble-right:active .bubble-text,
-.bubble-right:active .bubble-label {
+.bubble-translation:active .bubble-text,
+.bubble-translation:active .bubble-label {
   color: var(--bg-black);
 }
 

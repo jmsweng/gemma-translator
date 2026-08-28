@@ -1,0 +1,133 @@
+diff --git a/frontend/src/TranslatorApp.jsx b/frontend/src/TranslatorApp.jsx
+index d94fa9e..86017eb 100644
+--- a/frontend/src/TranslatorApp.jsx
++++ b/frontend/src/TranslatorApp.jsx
+@@ -88,6 +88,9 @@ function TranslatorApp({ config }) {
+   // Which lane's language picker is open (1, 2, or null). Unused when
+   // config.touchLanguageMode is "cycle".
+   const [pickerLane, setPickerLane] = useState(null)
++  // Lane whose button produced the result on screen; drives which side of the
++  // drawer the transcription and translation bubbles sit on.
++  const [sourceLane, setSourceLane] = useState(1)
+ 
+   // Translation State
+   const [transcriptionData, setTranscriptionData] = useState({
+@@ -261,6 +264,7 @@ function TranslatorApp({ config }) {
+   // Translation Pipeline
+   const processTranslation = async (lane, base64Data) => {
+     setIsDrawerOpen(true)
++    setSourceLane(lane)
+ 
+     const src =
+       lane === 1
+@@ -405,6 +409,7 @@ function TranslatorApp({ config }) {
+         translationTarget={translationData.target}
+         translationText={translationData.text}
+         metaText={metaText}
++        sourceLane={sourceLane}
+       />
+ 
+       <main className="translator-workspace">
+diff --git a/frontend/src/components/ResponseDrawer.jsx b/frontend/src/components/ResponseDrawer.jsx
+index dc52a78..db617d2 100644
+--- a/frontend/src/components/ResponseDrawer.jsx
++++ b/frontend/src/components/ResponseDrawer.jsx
+@@ -16,8 +16,12 @@
+ 
+ import React from "react"
+ 
+-// Result panel: transcription (left bubble) and translation (right bubble)
+-// in a chat-style layout, with a first-run placeholder before any recording.
++// Result panel: transcription and translation bubbles in a chat-style layout,
++// with a first-run placeholder before any recording.
++//
++// The bubbles mirror the hardware: whichever lane's push-to-talk button was
++// held gets its transcription on that same side of the screen, and the
++// translation lands on the listener's side. sourceLane 1 = left, 2 = right.
+ export default function ResponseDrawer({
+   isActive,
+   onClose,
+@@ -27,10 +31,14 @@ export default function ResponseDrawer({
+   translationText,
+   metaText,
+   placeholderText,
++  sourceLane = 1,
+ }) {
+   // Determine if we have any data to show (or if the drawer was explicitly activated)
+   const hasData = isActive || transcriptionSource !== ""
+ 
++  const sourceSide = sourceLane === 2 ? "right" : "left"
++  const targetSide = sourceLane === 2 ? "left" : "right"
++
+   return (
+     <div
+       className={`response-drawer ${isActive ? "active" : ""}`}
+@@ -49,8 +57,8 @@ export default function ResponseDrawer({
+           </div>
+         ) : (
+           <>
+-            <div className="chat-row chat-row-left">
+-              <div className="chat-bubble bubble-left">
++            <div className={`chat-row chat-row-${sourceSide}`}>
++              <div className={`chat-bubble bubble-${sourceSide}`}>
+                 <div className="bubble-label">
+                   {transcriptionSource || "LANG 1"}
+                 </div>
+@@ -59,8 +67,10 @@ export default function ResponseDrawer({
+                 </div>
+               </div>
+             </div>
+-            <div className="chat-row chat-row-right">
+-              <div className="chat-bubble bubble-right">
++            <div className={`chat-row chat-row-${targetSide}`}>
++              <div
++                className={`chat-bubble bubble-${targetSide} bubble-translation`}
++              >
+                 <div className="bubble-label">
+                   {translationTarget || "LANG 2"}
+                 </div>
+diff --git a/frontend/style.css b/frontend/style.css
+index aa3200d..1db2846 100644
+--- a/frontend/style.css
++++ b/frontend/style.css
+@@ -476,6 +476,9 @@ body {
+   position: relative;
+ }
+ 
++/* Side classes control alignment and tail only — either bubble can take
++   either side, depending on which lane spoke. */
++
+ /* Left bubble: sharp bottom-left corner (tail) */
+ .bubble-left {
+   border-bottom-left-radius: 1px;
+@@ -486,6 +489,10 @@ body {
+ .bubble-right {
+   border-bottom-right-radius: 1px;
+   box-shadow: 2px 2px 0 var(--red-muted);
++}
++
++/* The translation bubble stays interactive whichever side it lands on. */
++.bubble-translation {
+   cursor: pointer;
+   transition:
+     background 0.15s,
+@@ -493,15 +500,15 @@ body {
+     border-color 0.15s;
+ }
+ 
+-.bubble-right:hover {
++.bubble-translation:hover {
+   background: var(--red-muted);
+ }
+ 
+-.bubble-right:active {
++.bubble-translation:active {
+   background: var(--red-bright);
+ }
+-.bubble-right:active .bubble-text,
+-.bubble-right:active .bubble-label {
++.bubble-translation:active .bubble-text,
++.bubble-translation:active .bubble-label {
+   color: var(--bg-black);
+ }
+ 
