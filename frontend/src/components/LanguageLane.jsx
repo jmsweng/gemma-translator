@@ -17,8 +17,9 @@
 import React, { useEffect, useRef } from "react"
 
 // One person's lane: the vertical "revolver" language selector plus the
-// recording highlight state. The kiosk is keyboard-first — the ◀▶ arrows stay
-// in the DOM for layout but are hidden via CSS (.rotator-arrow).
+// recording highlight state. The ◀▶ arrows stay in the DOM for layout but are
+// hidden via CSS (.rotator-arrow); on a touchscreen the readout itself is the
+// control — tapping it fires onTapLanguage.
 export default function LanguageLane({
   laneId,
   laneLabel,
@@ -27,6 +28,7 @@ export default function LanguageLane({
   isRecording,
   isActivePerson,
   onRotate,
+  onTapLanguage,
 }) {
   const drumRef = useRef(null)
 
@@ -64,7 +66,14 @@ export default function LanguageLane({
         >
           ◀
         </button>
-        <div className="revolver-viewport">
+        <div
+          className="revolver-viewport"
+          role="button"
+          onPointerDown={(e) => {
+            e.preventDefault()
+            if (!isRecording && onTapLanguage) onTapLanguage()
+          }}
+        >
           <div className="revolver-drum" ref={drumRef}>
             {languages.map((l, i) => (
               <div key={l.code} className="revolver-item">

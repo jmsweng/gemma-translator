@@ -691,3 +691,126 @@ body {
   height: 320px;
 }
 
+
+/* ---------------------------------------------------------------------------
+   Touchscreen controls
+   Added for finger input on the 480x320 kiosk panel. The keyboard paths are
+   untouched — these controls sit alongside them.
+   --------------------------------------------------------------------------- */
+
+/* The language readout doubles as the picker/cycle button. */
+.revolver-viewport {
+  cursor: pointer;
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+
+/* Push-to-talk row */
+.touch-controls {
+  display: flex;
+  width: 100%;
+  height: 46px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-black);
+}
+
+.talk-button {
+  flex: 1;
+  height: 100%;
+  border: none;
+  border-right: 1px solid var(--border-color);
+  background: var(--bg-black);
+  color: var(--red-bright);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background 0.1s,
+    color 0.1s;
+}
+
+.talk-button:last-child {
+  border-right: none;
+}
+
+.talk-button.recording {
+  background: var(--red-bright);
+  color: var(--bg-black);
+}
+
+.talk-button:disabled {
+  opacity: 0.35;
+}
+
+/* Language picker overlay */
+.language-picker {
+  position: absolute;
+  inset: 0;
+  z-index: 900;
+  background: var(--bg-black);
+  display: flex;
+  flex-direction: column;
+  touch-action: none;
+}
+
+.language-picker-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  gap: 6px;
+}
+
+.language-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--red-bright);
+  padding: 0 2px;
+}
+
+.language-picker-close {
+  width: 34px;
+  height: 26px;
+  background: var(--bg-black);
+  border: 1px solid var(--border-color);
+  color: var(--red-bright);
+  font-size: 14px;
+  border-radius: 2px;
+}
+
+/* 3 x 2 grid: six tiles, each comfortably larger than a fingertip. */
+.language-picker-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: 1fr;
+  gap: 6px;
+}
+
+.language-tile {
+  background: var(--bg-black);
+  border: 2px solid var(--border-color);
+  border-radius: 3px;
+  color: var(--red-bright);
+  font-size: 16px;
+  font-weight: 700;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.language-tile.current {
+  background: var(--red-bright);
+  color: var(--bg-black);
+}
+
+/* Held by the other lane — still selectable; picking it swaps the two lanes. */
+.language-tile.taken {
+  opacity: 0.45;
+  border-style: dashed;
+}

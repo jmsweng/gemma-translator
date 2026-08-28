@@ -29,6 +29,7 @@ function App() {
     modelName: "gemma4-e2b",
     apiKey: "",
     keyboardMode: localStorage.getItem("keyboardMode") || "landscape",
+    touchLanguageMode: localStorage.getItem("touchLanguageMode") || "picker",
     useProxy: true,
     enableTts: true,
     visualizerBars: 16,
@@ -57,6 +58,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem("keyboardMode", config.keyboardMode)
   }, [config.keyboardMode])
+
+  useEffect(() => {
+    localStorage.setItem("touchLanguageMode", config.touchLanguageMode)
+  }, [config.touchLanguageMode])
 
   useEffect(() => {
     if (config.themeColor) {

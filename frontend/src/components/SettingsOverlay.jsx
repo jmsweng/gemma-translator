@@ -169,6 +169,17 @@ export default function SettingsOverlay({
         </div>
 
         <div className="form-group">
+          <label>Touch Language Mode</label>
+          <select
+            value={config.touchLanguageMode}
+            onChange={(e) => handleChange("touchLanguageMode", e.target.value)}
+          >
+            <option value="picker">Picker — tap opens a language list</option>
+            <option value="cycle">Cycle — tap advances to the next</option>
+          </select>
+        </div>
+
+        <div className="form-group">
           <label>Keyboard Mode</label>
           <select
             value={config.keyboardMode}

@@ -16,6 +16,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react"
 import LanguageLane from "./components/LanguageLane"
+import LanguagePicker from "./components/LanguagePicker"
+import TouchControls from "./components/TouchControls"
 import ResponseDrawer from "./components/ResponseDrawer"
 import Visualizer from "./components/Visualizer"
 import { useAudioRecorder } from "./hooks/useAudioRecorder"
@@ -44,6 +46,9 @@ function TranslatorApp({ config }) {
   // UI State
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [activePerson, setActivePerson] = useState(1)
+  // Which lane's language picker is open (1, 2, or null). Unused when
+  // config.touchLanguageMode is "cycle".
+  const [pickerLane, setPickerLane] = useState(null)
 
   // Translation State
   const [transcriptionData, setTranscriptionData] = useState({
@@ -146,6 +151,39 @@ function TranslatorApp({ config }) {
       }
     },
     [lang1Index, lang2Index, isRecording],
+  )
+
+  // Set a lane to an explicit language. If the other lane already holds it,
+  // the two swap rather than colliding (lanes may never match).
+  const handleSelectLanguage = useCallback(
+    (lane, index) => {
+      if (isRecording) return
+      playBlip("language")
+      if (lane === 1) {
+        if (index === lang2Index) setLang2Index(lang1Index)
+        setLang1Index(index)
+      } else {
+        if (index === lang1Index) setLang1Index(lang2Index)
+        setLang2Index(index)
+      }
+      setPickerLane(null)
+    },
+    [lang1Index, lang2Index, isRecording],
+  )
+
+  // Tapping a lane's language readout: open the picker, or just advance to the
+  // next language if the kiosk is set to "cycle".
+  const handleTapLanguage = useCallback(
+    (lane) => {
+      if (isRecording) return
+      if (config.touchLanguageMode === "cycle") {
+        handleRotateLanguage(lane, 1)
+      } else {
+        playBlip("speaker")
+        setPickerLane(lane)
+      }
+    },
+    [config.touchLanguageMode, handleRotateLanguage, isRecording],
   )
 
   // Recording triggers
@@ -342,6 +380,7 @@ function TranslatorApp({ config }) {
               config.keyboardMode === "landscape" && activePerson === 1
             }
             onRotate={(dir) => handleRotateLanguage(1, dir)}
+            onTapLanguage={() => handleTapLanguage(1)}
           />
           <LanguageLane
             laneId={2}
@@ -353,8 +392,15 @@ function TranslatorApp({ config }) {
               config.keyboardMode === "landscape" && activePerson === 2
             }
             onRotate={(dir) => handleRotateLanguage(2, dir)}
+            onTapLanguage={() => handleTapLanguage(2)}
           />
         </div>
+
+        <TouchControls
+          recordingLane={activeLaneRecording}
+          onStart={handleRecordStart}
+          onStop={handleRecordStop}
+        />
 
         <Visualizer
           activePerson={activePerson}
@@ -363,6 +409,15 @@ function TranslatorApp({ config }) {
           barsCount={parseInt(config.visualizerBars, 10)}
         />
       </main>
+
+      <LanguagePicker
+        laneId={pickerLane}
+        languages={AVAILABLE_LANGUAGES}
+        currentIndex={pickerLane === 1 ? lang1Index : lang2Index}
+        otherIndex={pickerLane === 1 ? lang2Index : lang1Index}
+        onSelect={(i) => handleSelectLanguage(pickerLane, i)}
+        onClose={() => setPickerLane(null)}
+      />
     </div>
   )
 }
