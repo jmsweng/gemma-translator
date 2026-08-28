@@ -22,10 +22,6 @@
   --red-muted: #000000;
   --border-color: #000000;
   --border-glow: #000000;
-  /* Fixed height of the results drawer at the top. The push-to-talk row below
-     takes whatever is left over, so shrinking this grows the buttons.
-     320 - drawer - 60 (lanes) - 28 (visualizer) - 2 (borders) = button height. */
-  --drawer-height: 140px;
   --font-mono:
     "Roboto Mono", "Courier New", "Noto Sans CJK KR", "Noto Sans CJK JP",
     "Noto Sans CJK SC", "Noto Sans CJK TC", "Noto Sans Arabic", "Noto Naskh Arabic",
@@ -152,8 +148,7 @@ body {
 .translator-workspace {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
+  flex-shrink: 0;
 }
 
 /* Side-by-Side Languages Row */
@@ -161,7 +156,6 @@ body {
   display: flex;
   width: 100%;
   height: 60px;
-  flex-shrink: 0;
   border-top: 1px solid var(--border-color);
   background: var(--bg-black);
 }
@@ -361,7 +355,6 @@ body {
 /* Visualizer Divider Bar */
 .visualizer-divider {
   height: 28px;
-  flex-shrink: 0;
   background: var(--bg-black);
   border-top: 1px solid var(--border-color);
   display: flex;
@@ -401,7 +394,7 @@ body {
 
 /* Chat Panel (fills remaining space below visualizer) */
 .response-drawer {
-  flex: 0 0 var(--drawer-height);
+  flex: 1 1 0;
   width: 100%;
   background: var(--bg-black);
   z-index: 500;
@@ -432,7 +425,7 @@ body {
   padding: 6px 8px 4px;
   gap: 4px;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .initial-placeholder {
@@ -724,8 +717,8 @@ body {
 .touch-controls {
   display: flex;
   width: 100%;
-  flex: 1 1 auto;
-  min-height: 0;
+  height: 46px;
+  flex-shrink: 0;
   border-top: 1px solid var(--border-color);
   background: var(--bg-black);
 }
@@ -737,13 +730,13 @@ body {
   border-right: 1px solid var(--border-color);
   background: var(--bg-black);
   color: var(--red-bright);
-  font-size: 19px;
+  font-size: 14px;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.2;
   letter-spacing: 0.02em;
-  padding: 0 10px;
+  padding: 0 6px;
   overflow: hidden;
-  white-space: normal;
+  text-overflow: ellipsis;
   touch-action: none;
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
@@ -759,7 +752,7 @@ body {
 .talk-button.recording {
   background: var(--red-bright);
   color: var(--bg-black);
-  font-size: 44px;
+  font-size: 20px;
 }
 
 .talk-button:disabled {
