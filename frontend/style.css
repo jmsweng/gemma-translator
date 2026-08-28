@@ -24,7 +24,8 @@
   --border-glow: #000000;
   --font-mono:
     "Roboto Mono", "Courier New", "Noto Sans CJK KR", "Noto Sans CJK JP",
-    "Noto Sans CJK SC", "Noto Sans CJK TC", monospace;
+    "Noto Sans CJK SC", "Noto Sans CJK TC", "Noto Sans Arabic", "Noto Naskh Arabic",
+    monospace;
 }
 
 * {
@@ -722,9 +723,13 @@ body {
   border-right: 1px solid var(--border-color);
   background: var(--bg-black);
   color: var(--red-bright);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  padding: 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   touch-action: none;
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
@@ -740,6 +745,7 @@ body {
 .talk-button.recording {
   background: var(--red-bright);
   color: var(--bg-black);
+  font-size: 20px;
 }
 
 .talk-button:disabled {

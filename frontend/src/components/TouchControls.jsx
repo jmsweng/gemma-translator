@@ -19,7 +19,7 @@ import React from "react"
 // On-screen push-to-talk: one hold button per lane, mirroring the Z / X keys.
 // Pointer capture keeps the release event on the button even if the finger
 // slides off it mid-hold, so a recording can never be left running.
-function TalkButton({ lane, label, recordingLane, onStart, onStop }) {
+function TalkButton({ lane, language, recordingLane, onStart, onStop }) {
   const isRecording = recordingLane === lane
   const otherBusy = recordingLane !== null && recordingLane !== lane
 
@@ -41,30 +41,38 @@ function TalkButton({ lane, label, recordingLane, onStart, onStop }) {
   return (
     <button
       className={`talk-button ${isRecording ? "recording" : ""}`}
+      lang={language.code}
+      dir={language.rtl ? "rtl" : "ltr"}
       disabled={otherBusy}
       onPointerDown={handleDown}
       onPointerUp={handleUp}
       onPointerCancel={handleUp}
       onContextMenu={(e) => e.preventDefault()}
     >
-      {isRecording ? "● REC" : label}
+      {isRecording ? "●" : language.talkLabel}
     </button>
   )
 }
 
-export default function TouchControls({ recordingLane, onStart, onStop }) {
+export default function TouchControls({
+  recordingLane,
+  lang1,
+  lang2,
+  onStart,
+  onStop,
+}) {
   return (
     <div className="touch-controls">
       <TalkButton
         lane={1}
-        label="HOLD TO TALK 1"
+        language={lang1}
         recordingLane={recordingLane}
         onStart={onStart}
         onStop={onStop}
       />
       <TalkButton
         lane={2}
-        label="HOLD TO TALK 2"
+        language={lang2}
         recordingLane={recordingLane}
         onStart={onStart}
         onStop={onStop}

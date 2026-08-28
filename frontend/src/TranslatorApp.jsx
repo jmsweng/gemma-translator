@@ -33,13 +33,52 @@ import { playBlip } from "./utils/audio-blip"
 // → LLM translation via /proxy (Gemma, strict-JSON prompt) → /api/tts playback.
 
 // Languages offered on each lane's revolver; ttsLang selects the backend voice.
+// talkLabel is the on-screen push-to-talk prompt, written in that language so
+// each person reads their own lane's button. rtl flips the button's direction.
 const AVAILABLE_LANGUAGES = [
-  { code: "ar", name: "Arabic", voice: "tts", ttsLang: "ar" },
-  { code: "en", name: "English", voice: "tts", ttsLang: "en" },
-  { code: "es", name: "Spanish", voice: "tts", ttsLang: "es" },
-  { code: "ja", name: "Japanese", voice: "tts", ttsLang: "ja" },
-  { code: "zh", name: "Chinese", voice: "tts", ttsLang: "zh" },
-  { code: "ko", name: "Korean", voice: "tts", ttsLang: "ko" },
+  {
+    code: "ar",
+    name: "Arabic",
+    voice: "tts",
+    ttsLang: "ar",
+    talkLabel: "اضغط للتحدث",
+    rtl: true,
+  },
+  {
+    code: "en",
+    name: "English",
+    voice: "tts",
+    ttsLang: "en",
+    talkLabel: "HOLD TO TALK",
+  },
+  {
+    code: "es",
+    name: "Spanish",
+    voice: "tts",
+    ttsLang: "es",
+    talkLabel: "MANTÉN PARA HABLAR",
+  },
+  {
+    code: "ja",
+    name: "Japanese",
+    voice: "tts",
+    ttsLang: "ja",
+    talkLabel: "押して話す",
+  },
+  {
+    code: "zh",
+    name: "Chinese",
+    voice: "tts",
+    ttsLang: "zh",
+    talkLabel: "按住说话",
+  },
+  {
+    code: "ko",
+    name: "Korean",
+    voice: "tts",
+    ttsLang: "ko",
+    talkLabel: "눌러서 말하기",
+  },
 ]
 
 function TranslatorApp({ config }) {
@@ -398,6 +437,8 @@ function TranslatorApp({ config }) {
 
         <TouchControls
           recordingLane={activeLaneRecording}
+          lang1={AVAILABLE_LANGUAGES[lang1Index]}
+          lang2={AVAILABLE_LANGUAGES[lang2Index]}
           onStart={handleRecordStart}
           onStop={handleRecordStop}
         />
