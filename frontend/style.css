@@ -724,7 +724,10 @@ body {
 }
 
 .talk-button {
-  flex: 1;
+  /* 50% basis, not flex: 1. With flex-basis 0 the border is subtracted before
+     the free space is split, giving 240.5px buttons whose divider sits half a
+     pixel off the lane divider above. */
+  flex: 0 0 50%;
   height: 100%;
   border: none;
   border-right: 1px solid var(--border-color);
