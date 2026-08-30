@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-import React from "react"
+import React, { useEffect } from "react"
+import { useScrollHint } from "../hooks/useScrollHint"
 
 // Result panel: transcription and translation bubbles in a chat-style layout,
 // with a first-run placeholder before any recording.
@@ -36,6 +37,21 @@ export default function ResponseDrawer({
   // Determine if we have any data to show (or if the drawer was explicitly activated)
   const hasData = isActive || transcriptionSource !== ""
 
+  const { ref: panelRef, hasMore } = useScrollHint([
+    transcriptionText,
+    translationText,
+    hasData,
+  ])
+
+  // A long transcription can push the translation below the fold. Scroll to
+  // it as it arrives so the result is never silently off-screen — the
+  // listener has no reason to suspect there is more to scroll to.
+  useEffect(() => {
+    const panel = panelRef.current
+    if (!panel) return
+    panel.scrollTo({ top: panel.scrollHeight, behavior: "smooth" })
+  }, [translationText])
+
   const sourceSide = sourceLane === 2 ? "right" : "left"
   const targetSide = sourceLane === 2 ? "left" : "right"
 
@@ -50,7 +66,8 @@ export default function ResponseDrawer({
         onClick={onClose}
         style={{ display: "none" }}
       ></div>
-      <div className="chat-panel">
+      <div className="scroll-hint-wrap">
+        <div className="chat-panel" ref={panelRef}>
         {!hasData ? (
           <div className="initial-placeholder">
             {placeholderText || "Select languages, push to talk"}
@@ -82,6 +99,12 @@ export default function ResponseDrawer({
             <div className="chat-meta">{metaText}</div>
           </>
         )}
+        </div>
+        {hasMore ? (
+          <div className="scroll-hint" aria-hidden="true">
+            ▾
+          </div>
+        ) : null}
       </div>
     </div>
   )

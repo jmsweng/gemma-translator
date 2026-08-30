@@ -38,6 +38,9 @@ function App() {
   })
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  // Plain-language screen: TranslatorApp renders it (it owns the mic and the
+  // translation pipeline), but the toggle button lives up here beside ⚙.
+  const [isSimplifyOpen, setIsSimplifyOpen] = useState(false)
 
   const testConnection = async () => {
     try {
@@ -75,6 +78,13 @@ function App() {
       <div className="config-wrap-right" style={{ opacity: 1 }}>
         <button
           className="config-toggle-btn"
+          onClick={() => setIsSimplifyOpen(true)}
+          title="Plain language"
+        >
+          💬
+        </button>
+        <button
+          className="config-toggle-btn"
           onClick={() => setIsSettingsOpen(true)}
           title="Settings"
         >
@@ -83,7 +93,11 @@ function App() {
       </div>
 
       <div style={{ height: '100%' }}>
-        <TranslatorApp config={config} />
+        <TranslatorApp
+          config={config}
+          isSimplifyOpen={isSimplifyOpen}
+          setIsSimplifyOpen={setIsSimplifyOpen}
+        />
       </div>
 
       <SettingsOverlay

@@ -20,10 +20,13 @@ import LanguagePicker from "./components/LanguagePicker"
 import TouchControls from "./components/TouchControls"
 import ResponseDrawer from "./components/ResponseDrawer"
 import Visualizer from "./components/Visualizer"
+import SimplifyScreen from "./components/SimplifyScreen"
 import { useAudioRecorder } from "./hooks/useAudioRecorder"
 import {
   transcribeAudio,
   translateText,
+  simplifyText,
+  buildSimplifyPrompt,
   splitTextIntoSpeechChunks,
 } from "./utils/api"
 import { playBlip } from "./utils/audio-blip"
@@ -81,7 +84,11 @@ const AVAILABLE_LANGUAGES = [
   },
 ]
 
-function TranslatorApp({ config }) {
+function TranslatorApp({
+  config,
+  isSimplifyOpen = false,
+  setIsSimplifyOpen = () => {},
+}) {
   // UI State
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [activePerson, setActivePerson] = useState(1)
@@ -110,6 +117,16 @@ function TranslatorApp({ config }) {
   const [lang1Index, setLang1Index] = useState(0)
   const [lang2Index, setLang2Index] = useState(1)
   const [activeLaneRecording, setActiveLaneRecording] = useState(null) // 1 or 2
+
+  // Plain-language screen state. simplifyLane is the person doing the
+  // speaking; the approved text is later translated into the other lane's
+  // language, exactly as a normal push-to-talk would be.
+  const [simplifyLane, setSimplifyLane] = useState(1)
+  const [isSimplifyRecording, setIsSimplifyRecording] = useState(false)
+  const [simplifyStatus, setSimplifyStatus] = useState("idle")
+  const [simplifyHeard, setSimplifyHeard] = useState("")
+  const [simplifyResult, setSimplifyResult] = useState("")
+  const [simplifyError, setSimplifyError] = useState("")
 
   const { isRecording, startRecording, stopRecording, analyser, micError } =
     useAudioRecorder()
@@ -261,46 +278,41 @@ function TranslatorApp({ config }) {
     }
   }, [isRecording, activeLaneRecording, stopRecording])
 
-  // Translation Pipeline
-  const processTranslation = async (lane, base64Data) => {
+  // Speaker's language and their listener's, for a given lane.
+  const laneLanguages = (lane) => ({
+    src:
+      lane === 1
+        ? AVAILABLE_LANGUAGES[lang1Index]
+        : AVAILABLE_LANGUAGES[lang2Index],
+    dst:
+      lane === 1
+        ? AVAILABLE_LANGUAGES[lang2Index]
+        : AVAILABLE_LANGUAGES[lang1Index],
+  })
+
+  // Translation Pipeline (second half): translate text that has already been
+  // transcribed, then speak it. Split out from processTranslation so the
+  // plain-language screen can feed in approved text as if it were spoken.
+  const translateAndSpeak = async (lane, text) => {
     setIsDrawerOpen(true)
     setSourceLane(lane)
 
-    const src =
-      lane === 1
-        ? AVAILABLE_LANGUAGES[lang1Index]
-        : AVAILABLE_LANGUAGES[lang2Index]
-    const dst =
-      lane === 1
-        ? AVAILABLE_LANGUAGES[lang2Index]
-        : AVAILABLE_LANGUAGES[lang1Index]
+    const { src, dst } = laneLanguages(lane)
 
-    setTranscriptionData({
-      source: `${src.name} (Source)`,
-      text: "Analyzing voice input...",
-    })
+    setTranscriptionData({ source: `${src.name} (Source)`, text })
     setTranslationData({
       target: `${dst.name} (Translation)`,
       text: "Translating...",
     })
     setMetaText("")
 
+    if (!text.trim()) {
+      setTranslationData((prev) => ({ ...prev, text: "(No speech detected)" }))
+      return
+    }
+
     try {
-      // 1. Transcription
-      setTranscriptionData((prev) => ({ ...prev, text: "Listening..." }))
-      const transcribedText = await transcribeAudio(base64Data, src.code)
-      setTranscriptionData((prev) => ({ ...prev, text: transcribedText }))
-
-      if (!transcribedText.trim()) {
-        setTranslationData((prev) => ({
-          ...prev,
-          text: "(No speech detected)",
-        }))
-        return
-      }
-
-      // 2. Translation
-      const result = await translateText(transcribedText, {
+      const result = await translateText(text, {
         ...config,
         modelName: config.modelName,
         systemPrompt: `You are a high-performance translator. Your task is to translate text from ${src.name.split(" ")[0]} into ${dst.name.split(" ")[0]}.\nYou MUST format your response as a valid JSON object matching this structure:\n{\n  "translation": "High-quality, natural translation into ${dst.name.split(" ")[0]}"\n}\nDo NOT return anything else except this JSON object. No Markdown block wraps (no \`\`\`json), no introductory text, no conversational text. Start directly with "{" and end directly with "}".`,
@@ -314,13 +326,166 @@ function TranslatorApp({ config }) {
       }
     } catch (err) {
       console.error(err)
-      setTranscriptionData((prev) => ({
-        ...prev,
-        text: prev.text === "Listening..." ? "(Transcription failed)" : prev.text,
-      }))
       setTranslationData((prev) => ({ ...prev, text: `Error: ${err.message}` }))
     }
   }
+
+  // Translation Pipeline: mic audio → transcription → translateAndSpeak.
+  const processTranslation = async (lane, base64Data) => {
+    setIsDrawerOpen(true)
+    setSourceLane(lane)
+
+    const { src, dst } = laneLanguages(lane)
+
+    setTranscriptionData({
+      source: `${src.name} (Source)`,
+      text: "Analyzing voice input...",
+    })
+    setTranslationData({
+      target: `${dst.name} (Translation)`,
+      text: "Translating...",
+    })
+    setMetaText("")
+
+    let transcribedText
+    try {
+      setTranscriptionData((prev) => ({ ...prev, text: "Listening..." }))
+      transcribedText = await transcribeAudio(base64Data, src.code)
+    } catch (err) {
+      console.error(err)
+      setTranscriptionData((prev) => ({
+        ...prev,
+        text: "(Transcription failed)",
+      }))
+      setTranslationData((prev) => ({ ...prev, text: `Error: ${err.message}` }))
+      return
+    }
+
+    await translateAndSpeak(lane, transcribedText)
+  }
+
+  // Plain-Language Pipeline
+  const resetSimplifyState = useCallback(() => {
+    setSimplifyStatus("idle")
+    setSimplifyHeard("")
+    setSimplifyResult("")
+    setSimplifyError("")
+  }, [])
+
+  // Opening the screen targets whoever is currently the active person and
+  // clears any previous attempt.
+  useEffect(() => {
+    if (isSimplifyOpen) {
+      setSimplifyLane(activePerson)
+      resetSimplifyState()
+    }
+    // activePerson intentionally read only at open time
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSimplifyOpen, resetSimplifyState])
+
+  const handleSimplifyRecordStart = useCallback(async () => {
+    if (isRecording) return
+    stopSpeaking()
+    resetSimplifyState()
+    setIsSimplifyRecording(true)
+    setSimplifyStatus("recording")
+    playBlip("ping")
+
+    const ok = await startRecording()
+    if (!ok) {
+      setIsSimplifyRecording(false)
+      setSimplifyStatus("idle")
+    }
+  }, [isRecording, stopSpeaking, startRecording, resetSimplifyState])
+
+  // Transcribe the speaker's own words, then ask the model for a plain
+  // rewrite in that same language. Nothing is translated until they approve.
+  const processSimplify = async (lane, base64Data) => {
+    const { src } = laneLanguages(lane)
+
+    setSimplifyStatus("transcribing")
+    let transcribedText
+    try {
+      transcribedText = await transcribeAudio(base64Data, src.code)
+    } catch (err) {
+      console.error(err)
+      setSimplifyStatus("error")
+      setSimplifyError(`Transcription failed: ${err.message}`)
+      return
+    }
+
+    setSimplifyHeard(transcribedText)
+
+    if (!transcribedText.trim()) {
+      setSimplifyStatus("error")
+      setSimplifyError("(No speech detected) — hold and try again")
+      return
+    }
+
+    setSimplifyStatus("simplifying")
+    try {
+      const result = await simplifyText(transcribedText, {
+        ...config,
+        modelName: config.modelName,
+        systemPrompt: buildSimplifyPrompt(src.name),
+      })
+
+      const simplified = (result.simplified || "").trim()
+      if (!simplified) {
+        setSimplifyStatus("error")
+        setSimplifyError("Model returned nothing — hold and try again")
+        return
+      }
+
+      setSimplifyResult(simplified)
+      setSimplifyStatus("ready")
+    } catch (err) {
+      console.error(err)
+      setSimplifyStatus("error")
+      setSimplifyError(`Error: ${err.message}`)
+    }
+  }
+
+  const handleSimplifyRecordStop = useCallback(async () => {
+    if (!isRecording) return
+
+    setIsSimplifyRecording(false)
+    const lane = simplifyLane
+    const audioData = await stopRecording()
+
+    if (audioData) {
+      processSimplify(lane, audioData.base64Data)
+    } else {
+      setSimplifyStatus("error")
+      setSimplifyError("(No audio captured) — hold and try again")
+    }
+  }, [isRecording, simplifyLane, stopRecording])
+
+  // Approve: hand the simplified text to the translator and drop back to the
+  // main screen. From here on it is indistinguishable from spoken input.
+  const handleSimplifyApprove = useCallback(() => {
+    const approved = simplifyResult
+    playBlip("speaker")
+    setIsSimplifyOpen(false)
+    setActivePerson(simplifyLane)
+    resetSimplifyState()
+    translateAndSpeak(simplifyLane, approved)
+    // translateAndSpeak is recreated each render; calling it here is fine.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simplifyResult, simplifyLane, setIsSimplifyOpen, resetSimplifyState])
+
+  const handleSimplifyToggleLane = useCallback(() => {
+    if (isRecording) return
+    playBlip("speaker")
+    setSimplifyLane((prev) => (prev === 1 ? 2 : 1))
+    resetSimplifyState()
+  }, [isRecording, resetSimplifyState])
+
+  const handleSimplifyClose = useCallback(() => {
+    if (isRecording) return
+    setIsSimplifyOpen(false)
+    resetSimplifyState()
+  }, [isRecording, setIsSimplifyOpen, resetSimplifyState])
 
   // Push-to-talk keyboard control (two modes, see README):
   // landscape = one "active person" driven by Space/Z/arrows;
@@ -329,6 +494,8 @@ function TranslatorApp({ config }) {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return
+      // The plain-language screen owns the keyboard while it is up.
+      if (isSimplifyOpen) return
       const key = e.key.toLowerCase()
 
       if (config.keyboardMode === "landscape") {
@@ -373,6 +540,7 @@ function TranslatorApp({ config }) {
 
     const handleKeyUp = (e) => {
       if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return
+      if (isSimplifyOpen) return
       const key = e.key.toLowerCase()
 
       if (config.keyboardMode === "landscape") {
@@ -391,6 +559,7 @@ function TranslatorApp({ config }) {
     }
   }, [
     config.keyboardMode,
+    isSimplifyOpen,
     isRecording,
     activePerson,
     activeLaneRecording,
@@ -463,6 +632,23 @@ function TranslatorApp({ config }) {
         otherIndex={pickerLane === 1 ? lang2Index : lang1Index}
         onSelect={(i) => handleSelectLanguage(pickerLane, i)}
         onClose={() => setPickerLane(null)}
+      />
+
+      <SimplifyScreen
+        isActive={isSimplifyOpen}
+        onClose={handleSimplifyClose}
+        lane={simplifyLane}
+        onToggleLane={handleSimplifyToggleLane}
+        language={laneLanguages(simplifyLane).src}
+        isRecording={isSimplifyRecording}
+        onRecordStart={handleSimplifyRecordStart}
+        onRecordStop={handleSimplifyRecordStop}
+        status={simplifyStatus}
+        heardText={simplifyHeard}
+        simplifiedText={simplifyResult}
+        errorText={simplifyError}
+        onApprove={handleSimplifyApprove}
+        onRedo={resetSimplifyState}
       />
     </div>
   )
