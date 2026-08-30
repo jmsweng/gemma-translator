@@ -77,7 +77,7 @@ function App() {
     <div className="app-container">
       <div className="config-wrap-right" style={{ opacity: 1 }}>
         <button
-          className="config-toggle-btn"
+          className="config-toggle-btn config-toggle-btn-wide"
           onClick={() => setIsSimplifyOpen(true)}
           title="Plain language"
         >

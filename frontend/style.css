@@ -145,6 +145,17 @@ body {
   color: var(--bg-black);
 }
 
+/* Plain-language button: 3x the standard toggle width (31px -> 93px) for a
+   bigger finger target. A modifier rather than a change to the shared rule,
+   so the settings button keeps its original size. box-sizing is border-box
+   globally, so this width is the rendered width. */
+.config-toggle-btn-wide {
+  width: 93px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Controls workspace – fixed height at bottom */
 .translator-workspace {
   display: flex;
