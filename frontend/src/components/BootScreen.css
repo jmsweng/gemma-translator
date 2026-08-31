@@ -1,0 +1,178 @@
+/**
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* Boot / warm-up screen. Sized for the same 480x320 kiosk panel as
+   .translator-envelope and themed off the same CSS variables, so the theme
+   colour picked in Settings applies here too. */
+
+.boot-screen {
+  width: 480px;
+  max-width: 480px;
+  height: 320px;
+  max-height: 320px;
+  padding: 14px 18px;
+  background-color: var(--bg-black);
+  color: var(--red-bright);
+  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.boot-title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 6px;
+}
+
+.boot-bar {
+  display: flex;
+  gap: 2px;
+  height: 16px;
+}
+
+.boot-cell {
+  flex: 1;
+  border: 1px solid var(--border-color);
+  background: transparent;
+}
+
+.boot-cell.filled {
+  background: var(--red-bright);
+}
+
+.boot-cell.active {
+  animation: boot-blink 0.7s steps(1, end) infinite;
+}
+
+@keyframes boot-blink {
+  0%,
+  49% {
+    background: var(--red-bright);
+  }
+  50%,
+  100% {
+    background: transparent;
+  }
+}
+
+.boot-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+
+.boot-pct {
+  font-weight: 700;
+}
+
+.boot-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.boot-step {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  opacity: 0.45;
+}
+
+.boot-step.running,
+.boot-step.done,
+.boot-step.error {
+  opacity: 1;
+}
+
+.boot-step-mark {
+  width: 30px;
+  flex: none;
+}
+
+.boot-step-label {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.boot-step-time {
+  opacity: 0.7;
+}
+
+.boot-step.running .boot-step-label {
+  font-weight: 700;
+}
+
+.boot-footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  letter-spacing: 1px;
+  opacity: 0.7;
+  border-top: 1px solid var(--border-color);
+  padding-top: 5px;
+}
+
+.boot-warning {
+  font-weight: 700;
+}
+
+/* Language-swap overlay: same visual language as the boot screen, but sits on
+   top of the running UI rather than replacing it. */
+
+.swap-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-black);
+}
+
+.swap-panel {
+  width: 100%;
+  height: 100%;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--red-bright);
+}
+
+.swap-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 6px;
+}
+
+.boot-skip {
+  font-weight: 700;
+}

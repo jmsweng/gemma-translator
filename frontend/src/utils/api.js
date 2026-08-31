@@ -50,6 +50,25 @@ export async function testConnectionAPI(endpointUrl, useProxy, apiKey) {
   return true
 }
 
+// Warm-up status feed used by BootScreen and ModelSwapOverlay.
+export async function fetchWarmupStatus() {
+  const response = await fetch("/api/warmup", { cache: "no-store" })
+  if (!response.ok) throw new Error(`Warmup status: ${response.status}`)
+  return response.json()
+}
+
+// Ask the backend to make the STT/TTS models for these languages resident.
+// No-ops server-side if they already are.
+export async function requestLanguageWarmup(langs) {
+  const response = await fetch("/api/warmup/languages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ langs }),
+  })
+  if (!response.ok) throw new Error(`Warmup request: ${response.status}`)
+  return response.json()
+}
+
 // POST base64 Float32 PCM (16 kHz mono) to the local Moonshine STT.
 export async function transcribeAudio(base64Data, sourceLangCode) {
   const response = await fetch("/api/stt", {

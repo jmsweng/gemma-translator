@@ -30,6 +30,8 @@ import ssl
 import threading
 from collections import OrderedDict
 
+import warmup
+
 # Multilingual STT via Moonshine.
 # Language is fixed at recognizer construction, so we lazily build (and cache) one
 # recognizer per language actually used.
@@ -99,6 +101,16 @@ def get_stt_recognizer(language="en"):
         model_path, model_arch = get_model_for_language(language)
         _stt_recognizers[language] = Transcriber(model_path=model_path, model_arch=model_arch)
         return _stt_recognizers[language]
+
+
+def loaded_model_languages():
+    """(stt_langs, tts_langs) currently resident. Used by warmup.py so a
+    language swap only loads what is actually missing."""
+    with _stt_lock:
+        stt = set(_stt_recognizers.keys())
+    with _tts_lock:
+        tts = set(_tts_engines.keys())
+    return stt, tts
 
 
 PORT = 3000
@@ -260,6 +272,47 @@ class ProxyHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(str(e).encode('utf-8'))
 
+    def handle_warmup(self):
+        """Progress feed for the boot screen. Cheap enough to poll a few times
+        a second; it only reads in-memory state."""
+        try:
+            payload = json.dumps(warmup.status()).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Content-Length', str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+        except Exception as e:
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(str(e).encode('utf-8'))
+
+    def handle_warmup_languages(self):
+        """The UI posts the languages its lanes are set to; we make sure those
+        models are resident. Because the caches are LRU-bounded, switching a
+        lane to a third language would otherwise pay the load cost on the next
+        translation instead of now."""
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length) if content_length else b''
+            data = json.loads(body.decode('utf-8')) if body else {}
+            langs = data.get('langs') or []
+            if not isinstance(langs, list):
+                raise ValueError('langs must be a list')
+            warmup.request_languages([str(l) for l in langs][:MAX_MODELS])
+
+            payload = json.dumps({"status": "queued"}).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+        except Exception as e:
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(str(e).encode('utf-8'))
+
     def handle_volume(self):
         client_ip = self.client_address[0]
         if client_ip not in ('127.0.0.1', '::1', 'localhost'):
@@ -387,6 +440,9 @@ class ProxyHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         if self.path.startswith('/api/stt'):
             self.handle_stt()
             return
+        if self.path.startswith('/api/warmup/languages'):
+            self.handle_warmup_languages()
+            return
         if self.path.startswith('/api/volume'):
             self.handle_volume()
             return
@@ -401,6 +457,10 @@ class ProxyHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if self.path.startswith('/api/tts'):
             self.handle_tts()
+            return
+
+        if self.path.startswith('/api/warmup'):
+            self.handle_warmup()
             return
             
         if self.path.startswith('/api/volume'):
@@ -492,16 +552,11 @@ if __name__ == '__main__':
         if local_ip != "localhost":
             print(f"👉 {protocol}://{local_ip}:{PORT} (Local Network)")
         print(f"===========================================================")
-        def _prewarm_models():
-            try:
-                print("[Prewarm] Loading default English STT & TTS models into memory...", flush=True)
-                get_stt_recognizer("en")
-                get_tts_engine("en")
-                print("[Prewarm] Models pre-warmed successfully.", flush=True)
-            except Exception as e:
-                print(f"[Prewarm Error] {e}", flush=True)
-
-        threading.Thread(target=_prewarm_models, daemon=True).start()
+        # Load the Gemma weights and the Moonshine STT/TTS models up front so
+        # the first translation is not paying for all of it. Progress is
+        # published on /api/warmup and the UI shows a loading bar until it is
+        # done. Set WARMUP_ENABLED=0 to go back to lazy loading.
+        warmup.start(get_stt_recognizer, get_tts_engine, loaded_model_languages)
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:

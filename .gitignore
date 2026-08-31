@@ -23,3 +23,6 @@ server.log
 *.ogg
 *.flac
 coverage/
+
+# Warm-up step timings (regenerated each boot)
+backend/.warmup_timings.json
