@@ -85,7 +85,26 @@ function App() {
           aria-pressed={simpleMode}
           title={simpleMode ? "Simple language: ON" : "Simple language: OFF"}
         >
-          💬
+          {/* Inline SVG, not an emoji: U+1F4AC is outside DejaVu's coverage
+              and the bundled Roboto Mono is a Latin subset, so the emoji renders as
+              tofu on a stock Raspberry Pi OS image. currentColor keeps it in
+              step with the active-state inversion. */}
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.9 9.9 0 0 1-3.6-.7L3 21l1.9-5A8.2 8.2 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z" />
+            <circle cx="8.8" cy="11.5" r="1.1" fill="currentColor" stroke="none" />
+            <circle cx="12.5" cy="11.5" r="1.1" fill="currentColor" stroke="none" />
+            <circle cx="16.2" cy="11.5" r="1.1" fill="currentColor" stroke="none" />
+          </svg>
         </button>
         <button
           className="config-toggle-btn"

@@ -99,7 +99,24 @@ export default function ResponseDrawer({
                   aria-checked={isApproved}
                   aria-label="Confirm this reads correctly, then speak the translation"
                 >
-                  {isApproved ? "✓" : ""}
+                  {/* SVG rather than U+2713: this tick gates the whole
+                      approval step, so it must not depend on a system font
+                      being present. */}
+                  {isApproved ? (
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M4 12.5l5.5 5.5L20 6.5" />
+                    </svg>
+                  ) : null}
                 </button>
               ) : null}
             </div>
