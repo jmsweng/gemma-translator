@@ -162,36 +162,6 @@ export async function translateText(transcribedText, config) {
   }
 }
 
-// Plain-language rewrite, staying in the speaker's own language. Expects a
-// system prompt asking for {"simplified": ...}. The result is fed back into
-// translateText once the speaker approves it.
-export async function simplifyText(transcribedText, config) {
-  const result = await requestCompletion(transcribedText, config)
-  return {
-    simplified: extractJsonField(result.content, "simplified"),
-    duration: result.duration,
-    tokens: result.tokens,
-  }
-}
-
-// System prompt for the plain-language pass. languageName is the speaker's
-// own language — the rewrite must not translate, only simplify.
-export function buildSimplifyPrompt(languageName) {
-  const lang = languageName.split(" ")[0]
-  return [
-    `You rewrite text into simple, plain ${lang}. The input is in ${lang} and your output MUST also be in ${lang}. Do not translate.`,
-    `Rules:`,
-    `- Use short sentences and the most common everyday words.`,
-    `- Remove technical jargon, acronyms, idioms and figures of speech. If a technical idea is essential, explain it in plain words.`,
-    `- Keep every fact, number, name, request and question from the original. Do not add new information, opinions or commentary.`,
-    `- Aim for the style of Simple English Wikipedia: clear and direct, easy for a non-expert or a language learner to understand.`,
-    `- Keep it roughly the same length or shorter than the original.`,
-    `You MUST format your response as a valid JSON object matching this structure:`,
-    `{\n  "simplified": "The rewritten text in ${lang}"\n}`,
-    `Do NOT return anything else except this JSON object. No Markdown block wraps (no \`\`\`json), no introductory text, no conversational text. Start directly with "{" and end directly with "}".`,
-  ].join("\n")
-}
-
 // Word-safe chunking so each /api/tts request stays under ~`limit` chars.
 export function splitTextIntoSpeechChunks(text, limit = 180) {
   const words = text.split(/\s+/)

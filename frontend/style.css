@@ -145,7 +145,7 @@ body {
   color: var(--bg-black);
 }
 
-/* Plain-language button: 3x the standard toggle width (31px -> 93px) for a
+/* Simple-mode toggle: 3x the standard toggle width (31px -> 93px) for a
    bigger finger target. A modifier rather than a change to the shared rule,
    so the settings button keeps its original size. box-sizing is border-box
    globally, so this width is the rendered width. */
@@ -154,6 +154,13 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Simple mode ON. Reuses the theme's press inversion so the lit state is
+   unmistakable across the colour presets without hardcoding a colour. */
+.config-toggle-btn.active {
+  background: var(--red-bright);
+  color: var(--bg-black);
 }
 
 /* Controls workspace – fixed height at bottom */
@@ -870,224 +877,6 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
-   Plain-language screen
-   Second screen reached from the 💬 button beside ⚙. Push to talk, the model
-   rewrites what was said into simple jargon-free wording, and APPROVE feeds
-   that text back into the translator on the main screen.
-   --------------------------------------------------------------------------- */
-
-.simplify-screen {
-  position: absolute;
-  inset: 0;
-  /* Above the header buttons (z-index 1000), same as the settings overlay. */
-  z-index: 1001;
-  background-color: var(--bg-black);
-  border: 1px solid var(--border-color);
-  display: flex;
-  flex-direction: column;
-  touch-action: none;
-}
-
-.simplify-header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Active speaker switch. Reads as a control, not a status label — the
-   plain-language screen has no lanes of its own, so this is the only place
-   that says whose language the rewrite will be in. */
-.simplify-speaker-btn {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  max-width: 190px;
-  background: var(--bg-black);
-  border: 1px solid var(--border-color);
-  border-radius: 2px;
-  color: var(--red-bright);
-  padding: 3px 7px;
-  cursor: pointer;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.simplify-speaker-btn:active {
-  background: var(--red-bright);
-  color: var(--bg-black);
-}
-
-.simplify-speaker-btn:disabled {
-  opacity: 0.35;
-}
-
-.simplify-speaker-glyph {
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.simplify-speaker-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.simplify-body {
-  flex: 1 1 0;
-  min-height: 0;
-  /* Single scroll region, matching the chat panel. The blocks themselves do
-     not scroll — nested scrollers are miserable to drive with a finger. */
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  /* The screen sets touch-action: none to kill pull-to-refresh on the
-     push-to-talk button, so scrolling has to be re-enabled here. */
-  touch-action: pan-y;
-  -webkit-overflow-scrolling: touch;
-  padding: 6px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.simplify-body::-webkit-scrollbar {
-  width: 4px;
-}
-
-.simplify-body::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.simplify-body::-webkit-scrollbar-thumb {
-  background: var(--red-bright);
-  border-radius: 2px;
-}
-
-.simplify-status {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--red-bright);
-  opacity: 0.75;
-  flex-shrink: 0;
-}
-
-.simplify-block {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.simplify-block-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: var(--red-bright);
-  opacity: 0.6;
-}
-
-.simplify-block-text {
-  font-size: 13px;
-  line-height: 1.3;
-  color: var(--red-bright);
-  border: 1px solid var(--border-color);
-  border-radius: 2px;
-  padding: 4px 6px;
-  /* No max-height: long text extends the block and the body scrolls. */
-  flex-shrink: 0;
-  user-select: text;
-}
-
-/* The raw dictation is context only — the rewrite is what gets approved. */
-.simplify-heard {
-  opacity: 0.6;
-  font-size: 12px;
-}
-
-.simplify-result {
-  font-weight: 700;
-}
-
-.simplify-footer {
-  flex: 0 0 64px;
-  display: flex;
-  border-top: 1px solid var(--border-color);
-}
-
-.simplify-talk-btn {
-  flex: 1 1 auto;
-  height: 100%;
-  border: none;
-  background: var(--bg-black);
-  color: var(--red-bright);
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: 0.02em;
-  padding: 0 6px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  touch-action: none;
-  -webkit-touch-callout: none;
-  -webkit-tap-highlight-color: transparent;
-  transition:
-    background 0.1s,
-    color 0.1s;
-}
-
-.simplify-talk-btn.recording {
-  background: var(--red-bright);
-  color: var(--bg-black);
-  font-size: 22px;
-}
-
-.simplify-talk-btn:disabled {
-  opacity: 0.35;
-}
-
-.simplify-action-btn {
-  flex: 1 1 0;
-  height: 100%;
-  border: none;
-  border-right: 1px solid var(--border-color);
-  background: var(--bg-black);
-  color: var(--red-bright);
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  touch-action: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.simplify-action-btn:last-child {
-  border-right: none;
-}
-
-.simplify-action-btn:active {
-  background: var(--red-bright);
-  color: var(--bg-black);
-}
-
-/* APPROVE gets the wider half — it is the expected action. */
-.simplify-approve-btn {
-  flex: 2 1 0;
-}
-
-/* First-run explainer, replaced by the HEARD / SIMPLE blocks once used. */
-.simplify-hint {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--red-bright);
-  opacity: 0.7;
-  padding: 2px 0;
-  max-width: 380px;
-}
-
-/* ---------------------------------------------------------------------------
    "More below" arrow
    Chromium paints overlay scrollbars only during a drag, and the kiosk runs
    with cursor: none — so a scrollable panel otherwise looks identical to a
@@ -1132,6 +921,65 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .scroll-hint {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Round-trip confirmation checkbox
+   Sits beside the source bubble in simple mode. The translation is withheld
+   until this is ticked, so it needs a finger-sized target, not a 14px glyph.
+   --------------------------------------------------------------------------- */
+
+.roundtrip-check {
+  flex-shrink: 0;
+  align-self: flex-end;
+  width: 34px;
+  height: 34px;
+  margin: 0 4px 2px;
+  background: var(--bg-black);
+  border: 2px solid var(--border-color);
+  border-radius: 3px;
+  color: var(--red-bright);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  /* Draws the eye to the one thing blocking the conversation. Pulses the
+     border rather than transform: scale — a button that changes size is a
+     moving target for a finger, and never settles for hit-testing. */
+  animation: roundtrip-pulse 1.6s ease-in-out infinite;
+}
+
+.roundtrip-check:active {
+  background: var(--red-bright);
+  color: var(--bg-black);
+}
+
+.roundtrip-check.checked {
+  animation: none;
+  opacity: 0.75;
+  background: var(--red-bright);
+  color: var(--bg-black);
+}
+
+@keyframes roundtrip-pulse {
+  0%,
+  100% {
+    border-color: var(--border-color);
+  }
+  50% {
+    border-color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roundtrip-check {
     animation: none;
   }
 }

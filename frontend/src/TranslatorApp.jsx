@@ -20,13 +20,10 @@ import LanguagePicker from "./components/LanguagePicker"
 import TouchControls from "./components/TouchControls"
 import ResponseDrawer from "./components/ResponseDrawer"
 import Visualizer from "./components/Visualizer"
-import SimplifyScreen from "./components/SimplifyScreen"
 import { useAudioRecorder } from "./hooks/useAudioRecorder"
 import {
   transcribeAudio,
   translateText,
-  simplifyText,
-  buildSimplifyPrompt,
   splitTextIntoSpeechChunks,
 } from "./utils/api"
 import { playBlip } from "./utils/audio-blip"
@@ -84,10 +81,17 @@ const AVAILABLE_LANGUAGES = [
   },
 ]
 
+// Translation system prompts. Both demand a bare {"translation": ...} object;
+// the simple variant adds a reading-level instruction to the same single pass.
+const NORMAL_PROMPT = (src, dst) =>
+  `You are a high-performance translator. Your task is to translate text from ${src.name.split(" ")[0]} into ${dst.name.split(" ")[0]}.\nYou MUST format your response as a valid JSON object matching this structure:\n{\n  "translation": "High-quality, natural translation into ${dst.name.split(" ")[0]}"\n}\nDo NOT return anything else except this JSON object. No Markdown block wraps (no \`\`\`json), no introductory text, no conversational text. Start directly with "{" and end directly with "}".`
+
+const SIMPLE_PROMPT = (src, dst) =>
+  `You are a high-performance translator. Your task is to translate text from ${src.name.split(" ")[0]} into ${dst.name.split(" ")[0]}.\nSimplify the translation to a 6th-grade reading level: use short sentences, common everyday words, and avoid technical jargon, idioms, or complex grammar, while still preserving the original meaning as accurately as possible.\nYou MUST format your response as a valid JSON object matching this structure:\n{\n  "translation": "High-quality, natural translation into ${dst.name.split(" ")[0]}"\n}\nDo NOT return anything else except this JSON object. No Markdown block wraps (no \`\`\`json), no introductory text, no conversational text. Start directly with "{" and end directly with "}".`
+
 function TranslatorApp({
   config,
-  isSimplifyOpen = false,
-  setIsSimplifyOpen = () => {},
+  simpleMode = false,
 }) {
   // UI State
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
@@ -118,15 +122,13 @@ function TranslatorApp({
   const [lang2Index, setLang2Index] = useState(1)
   const [activeLaneRecording, setActiveLaneRecording] = useState(null) // 1 or 2
 
-  // Plain-language screen state. simplifyLane is the person doing the
-  // speaking; the approved text is later translated into the other lane's
-  // language, exactly as a normal push-to-talk would be.
-  const [simplifyLane, setSimplifyLane] = useState(1)
-  const [isSimplifyRecording, setIsSimplifyRecording] = useState(false)
-  const [simplifyStatus, setSimplifyStatus] = useState("idle")
-  const [simplifyHeard, setSimplifyHeard] = useState("")
-  const [simplifyResult, setSimplifyResult] = useState("")
-  const [simplifyError, setSimplifyError] = useState("")
+  // Round-trip confirmation (simple mode). The simplified translation is held
+  // back until the speaker confirms the back-translation reads correctly, so
+  // nothing is spoken to the listener that the speaker has not vetted.
+  const [pendingTranslation, setPendingTranslation] = useState(null)
+  const [awaitingApproval, setAwaitingApproval] = useState(false)
+  const [isApproved, setIsApproved] = useState(false)
+
 
   const { isRecording, startRecording, stopRecording, analyser, micError } =
     useAudioRecorder()
@@ -290,47 +292,7 @@ function TranslatorApp({
         : AVAILABLE_LANGUAGES[lang1Index],
   })
 
-  // Translation Pipeline (second half): translate text that has already been
-  // transcribed, then speak it. Split out from processTranslation so the
-  // plain-language screen can feed in approved text as if it were spoken.
-  const translateAndSpeak = async (lane, text) => {
-    setIsDrawerOpen(true)
-    setSourceLane(lane)
-
-    const { src, dst } = laneLanguages(lane)
-
-    setTranscriptionData({ source: `${src.name} (Source)`, text })
-    setTranslationData({
-      target: `${dst.name} (Translation)`,
-      text: "Translating...",
-    })
-    setMetaText("")
-
-    if (!text.trim()) {
-      setTranslationData((prev) => ({ ...prev, text: "(No speech detected)" }))
-      return
-    }
-
-    try {
-      const result = await translateText(text, {
-        ...config,
-        modelName: config.modelName,
-        systemPrompt: `You are a high-performance translator. Your task is to translate text from ${src.name.split(" ")[0]} into ${dst.name.split(" ")[0]}.\nYou MUST format your response as a valid JSON object matching this structure:\n{\n  "translation": "High-quality, natural translation into ${dst.name.split(" ")[0]}"\n}\nDo NOT return anything else except this JSON object. No Markdown block wraps (no \`\`\`json), no introductory text, no conversational text. Start directly with "{" and end directly with "}".`,
-      })
-
-      setTranslationData((prev) => ({ ...prev, text: result.translation }))
-      setMetaText(`Duration: ${result.duration}s | Tokens: ${result.tokens}`)
-
-      if (config.enableTts) {
-        playTTS(result.translation, dst.ttsLang)
-      }
-    } catch (err) {
-      console.error(err)
-      setTranslationData((prev) => ({ ...prev, text: `Error: ${err.message}` }))
-    }
-  }
-
-  // Translation Pipeline: mic audio → transcription → translateAndSpeak.
+  // Translation Pipeline: mic audio -> transcription -> translation -> speech.
   const processTranslation = async (lane, base64Data) => {
     setIsDrawerOpen(true)
     setSourceLane(lane)
@@ -346,7 +308,11 @@ function TranslatorApp({
       text: "Translating...",
     })
     setMetaText("")
+    setPendingTranslation(null)
+    setAwaitingApproval(false)
+    setIsApproved(false)
 
+    // 1. Transcription
     let transcribedText
     try {
       setTranscriptionData((prev) => ({ ...prev, text: "Listening..." }))
@@ -361,131 +327,95 @@ function TranslatorApp({
       return
     }
 
-    await translateAndSpeak(lane, transcribedText)
-  }
-
-  // Plain-Language Pipeline
-  const resetSimplifyState = useCallback(() => {
-    setSimplifyStatus("idle")
-    setSimplifyHeard("")
-    setSimplifyResult("")
-    setSimplifyError("")
-  }, [])
-
-  // Opening the screen targets whoever is currently the active person and
-  // clears any previous attempt.
-  useEffect(() => {
-    if (isSimplifyOpen) {
-      setSimplifyLane(activePerson)
-      resetSimplifyState()
-    }
-    // activePerson intentionally read only at open time
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSimplifyOpen, resetSimplifyState])
-
-  const handleSimplifyRecordStart = useCallback(async () => {
-    if (isRecording) return
-    stopSpeaking()
-    resetSimplifyState()
-    setIsSimplifyRecording(true)
-    setSimplifyStatus("recording")
-    playBlip("ping")
-
-    const ok = await startRecording()
-    if (!ok) {
-      setIsSimplifyRecording(false)
-      setSimplifyStatus("idle")
-    }
-  }, [isRecording, stopSpeaking, startRecording, resetSimplifyState])
-
-  // Transcribe the speaker's own words, then ask the model for a plain
-  // rewrite in that same language. Nothing is translated until they approve.
-  const processSimplify = async (lane, base64Data) => {
-    const { src } = laneLanguages(lane)
-
-    setSimplifyStatus("transcribing")
-    let transcribedText
-    try {
-      transcribedText = await transcribeAudio(base64Data, src.code)
-    } catch (err) {
-      console.error(err)
-      setSimplifyStatus("error")
-      setSimplifyError(`Transcription failed: ${err.message}`)
-      return
-    }
-
-    setSimplifyHeard(transcribedText)
+    setTranscriptionData((prev) => ({ ...prev, text: transcribedText }))
 
     if (!transcribedText.trim()) {
-      setSimplifyStatus("error")
-      setSimplifyError("(No speech detected) — hold and try again")
+      setTranslationData((prev) => ({ ...prev, text: "(No speech detected)" }))
       return
     }
 
-    setSimplifyStatus("simplifying")
+    // 2. Translation. Simple mode folds the plain-language instruction into
+    // this same pass, so there is no extra round trip.
+    const systemPrompt = simpleMode
+      ? SIMPLE_PROMPT(src, dst)
+      : NORMAL_PROMPT(src, dst)
+
     try {
-      const result = await simplifyText(transcribedText, {
+      const result = await translateText(transcribedText, {
         ...config,
         modelName: config.modelName,
-        systemPrompt: buildSimplifyPrompt(src.name),
+        systemPrompt,
       })
 
-      const simplified = (result.simplified || "").trim()
-      if (!simplified) {
-        setSimplifyStatus("error")
-        setSimplifyError("Model returned nothing — hold and try again")
+      // Plain mode: show it and speak it straight away.
+      if (!simpleMode) {
+        setTranslationData((prev) => ({ ...prev, text: result.translation }))
+        setMetaText(`Duration: ${result.duration}s | Tokens: ${result.tokens}`)
+        if (config.enableTts) {
+          playTTS(result.translation, dst.ttsLang)
+        }
         return
       }
 
-      setSimplifyResult(simplified)
-      setSimplifyStatus("ready")
+      // 3. Simple mode: translate the simplified result straight back into
+      // the speaker's language so they can check that simplifying did not
+      // drop or distort anything. Reuses the plain prompt with the languages
+      // reversed — the check is worthless if the return leg is simplified
+      // too, since that could paper over the very loss being looked for.
+      setTranslationData((prev) => ({
+        ...prev,
+        text: "— checking translation —",
+      }))
+
+      let backText = ""
+      try {
+        const back = await translateText(result.translation, {
+          ...config,
+          modelName: config.modelName,
+          systemPrompt: NORMAL_PROMPT(dst, src),
+        })
+        backText = back.translation
+        setMetaText(
+          `Duration: ${(Number(result.duration) + Number(back.duration)).toFixed(2)}s | Tokens: ${result.tokens + back.tokens}`,
+        )
+      } catch (err) {
+        // A failed round trip must not strand the translation. Fall back to
+        // confirming against the raw transcription instead.
+        console.error(err)
+        backText = transcribedText
+        setMetaText(
+          `Duration: ${result.duration}s | Tokens: ${result.tokens} | round-trip check unavailable`,
+        )
+      }
+
+      setTranscriptionData({
+        source: `${src.name} (Round trip)`,
+        text: backText,
+      })
+      setTranslationData((prev) => ({
+        ...prev,
+        text: "— confirm to send —",
+      }))
+      setPendingTranslation({ text: result.translation, ttsLang: dst.ttsLang })
+      setAwaitingApproval(true)
     } catch (err) {
       console.error(err)
-      setSimplifyStatus("error")
-      setSimplifyError(`Error: ${err.message}`)
+      setTranslationData((prev) => ({ ...prev, text: `Error: ${err.message}` }))
     }
   }
 
-  const handleSimplifyRecordStop = useCallback(async () => {
-    if (!isRecording) return
-
-    setIsSimplifyRecording(false)
-    const lane = simplifyLane
-    const audioData = await stopRecording()
-
-    if (audioData) {
-      processSimplify(lane, audioData.base64Data)
-    } else {
-      setSimplifyStatus("error")
-      setSimplifyError("(No audio captured) — hold and try again")
+  // Speaker ticked the box: reveal the held translation and speak it.
+  const handleApproveRoundTrip = useCallback(() => {
+    if (!pendingTranslation) return
+    setIsApproved(true)
+    setAwaitingApproval(false)
+    setTranslationData((prev) => ({ ...prev, text: pendingTranslation.text }))
+    playBlip("speaker")
+    if (config.enableTts) {
+      playTTS(pendingTranslation.text, pendingTranslation.ttsLang)
     }
-  }, [isRecording, simplifyLane, stopRecording])
-
-  // Approve: hand the simplified text to the translator and drop back to the
-  // main screen. From here on it is indistinguishable from spoken input.
-  const handleSimplifyApprove = useCallback(() => {
-    const approved = simplifyResult
-    playBlip("speaker")
-    setIsSimplifyOpen(false)
-    setActivePerson(simplifyLane)
-    resetSimplifyState()
-    translateAndSpeak(simplifyLane, approved)
-    // translateAndSpeak is recreated each render; calling it here is fine.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [simplifyResult, simplifyLane, setIsSimplifyOpen, resetSimplifyState])
-
-  const handleSimplifyToggleLane = useCallback(() => {
-    if (isRecording) return
-    playBlip("speaker")
-    setSimplifyLane((prev) => (prev === 1 ? 2 : 1))
-    resetSimplifyState()
-  }, [isRecording, resetSimplifyState])
-
-  const handleSimplifyClose = useCallback(() => {
-    if (isRecording) return
-    setIsSimplifyOpen(false)
-    resetSimplifyState()
-  }, [isRecording, setIsSimplifyOpen, resetSimplifyState])
+  }, [pendingTranslation, config.enableTts])
 
   // Push-to-talk keyboard control (two modes, see README):
   // landscape = one "active person" driven by Space/Z/arrows;
@@ -494,8 +424,6 @@ function TranslatorApp({
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return
-      // The plain-language screen owns the keyboard while it is up.
-      if (isSimplifyOpen) return
       const key = e.key.toLowerCase()
 
       if (config.keyboardMode === "landscape") {
@@ -540,7 +468,6 @@ function TranslatorApp({
 
     const handleKeyUp = (e) => {
       if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return
-      if (isSimplifyOpen) return
       const key = e.key.toLowerCase()
 
       if (config.keyboardMode === "landscape") {
@@ -559,7 +486,6 @@ function TranslatorApp({
     }
   }, [
     config.keyboardMode,
-    isSimplifyOpen,
     isRecording,
     activePerson,
     activeLaneRecording,
@@ -579,6 +505,9 @@ function TranslatorApp({
         translationText={translationData.text}
         metaText={metaText}
         sourceLane={sourceLane}
+        awaitingApproval={awaitingApproval}
+        isApproved={isApproved}
+        onApprove={handleApproveRoundTrip}
       />
 
       <main className="translator-workspace">
@@ -634,22 +563,6 @@ function TranslatorApp({
         onClose={() => setPickerLane(null)}
       />
 
-      <SimplifyScreen
-        isActive={isSimplifyOpen}
-        onClose={handleSimplifyClose}
-        lane={simplifyLane}
-        onToggleLane={handleSimplifyToggleLane}
-        language={laneLanguages(simplifyLane).src}
-        isRecording={isSimplifyRecording}
-        onRecordStart={handleSimplifyRecordStart}
-        onRecordStop={handleSimplifyRecordStop}
-        status={simplifyStatus}
-        heardText={simplifyHeard}
-        simplifiedText={simplifyResult}
-        errorText={simplifyError}
-        onApprove={handleSimplifyApprove}
-        onRedo={resetSimplifyState}
-      />
     </div>
   )
 }

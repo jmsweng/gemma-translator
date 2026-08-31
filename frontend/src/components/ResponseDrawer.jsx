@@ -33,6 +33,13 @@ export default function ResponseDrawer({
   metaText,
   placeholderText,
   sourceLane = 1,
+  // Round-trip confirmation (simple mode only). When awaitingApproval is
+  // true the source bubble holds the back-translation and the listener has
+  // not heard anything yet — the translation is withheld until the speaker
+  // ticks the box.
+  awaitingApproval = false,
+  isApproved = false,
+  onApprove = () => {},
 }) {
   // Determine if we have any data to show (or if the drawer was explicitly activated)
   const hasData = isActive || transcriptionSource !== ""
@@ -83,6 +90,18 @@ export default function ResponseDrawer({
                   {transcriptionText || "— listening —"}
                 </div>
               </div>
+              {awaitingApproval || isApproved ? (
+                <button
+                  className={`roundtrip-check ${isApproved ? "checked" : ""}`}
+                  onClick={onApprove}
+                  disabled={isApproved}
+                  role="checkbox"
+                  aria-checked={isApproved}
+                  aria-label="Confirm this reads correctly, then speak the translation"
+                >
+                  {isApproved ? "✓" : ""}
+                </button>
+              ) : null}
             </div>
             <div className={`chat-row chat-row-${targetSide}`}>
               <div

@@ -38,9 +38,10 @@ function App() {
   })
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  // Plain-language screen: TranslatorApp renders it (it owns the mic and the
-  // translation pipeline), but the toggle button lives up here beside ⚙.
-  const [isSimplifyOpen, setIsSimplifyOpen] = useState(false)
+  // Simple mode: when on, translations are also rewritten to a 6th-grade
+  // reading level. It is a sticky mode, not a one-shot action, so the button
+  // reflects state rather than triggering something.
+  const [simpleMode, setSimpleMode] = useState(false)
 
   const testConnection = async () => {
     try {
@@ -77,9 +78,12 @@ function App() {
     <div className="app-container">
       <div className="config-wrap-right" style={{ opacity: 1 }}>
         <button
-          className="config-toggle-btn config-toggle-btn-wide"
-          onClick={() => setIsSimplifyOpen(true)}
-          title="Plain language"
+          className={`config-toggle-btn config-toggle-btn-wide ${
+            simpleMode ? "active" : ""
+          }`}
+          onClick={() => setSimpleMode((prev) => !prev)}
+          aria-pressed={simpleMode}
+          title={simpleMode ? "Simple language: ON" : "Simple language: OFF"}
         >
           💬
         </button>
@@ -93,11 +97,7 @@ function App() {
       </div>
 
       <div style={{ height: '100%' }}>
-        <TranslatorApp
-          config={config}
-          isSimplifyOpen={isSimplifyOpen}
-          setIsSimplifyOpen={setIsSimplifyOpen}
-        />
+        <TranslatorApp config={config} simpleMode={simpleMode} />
       </div>
 
       <SettingsOverlay
