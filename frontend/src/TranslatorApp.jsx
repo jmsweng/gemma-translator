@@ -20,7 +20,6 @@ import LanguagePicker from "./components/LanguagePicker"
 import TouchControls from "./components/TouchControls"
 import ResponseDrawer from "./components/ResponseDrawer"
 import Visualizer from "./components/Visualizer"
-import ModelSwapOverlay from "./components/ModelSwapOverlay"
 import { useAudioRecorder } from "./hooks/useAudioRecorder"
 import {
   transcribeAudio,
@@ -554,13 +553,6 @@ function TranslatorApp({
           barsCount={parseInt(config.visualizerBars, 10)}
         />
       </main>
-
-      <ModelSwapOverlay
-        langs={[
-          AVAILABLE_LANGUAGES[lang1Index].code,
-          AVAILABLE_LANGUAGES[lang2Index].code,
-        ]}
-      />
 
       <LanguagePicker
         laneId={pickerLane}

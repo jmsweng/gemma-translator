@@ -17,7 +17,6 @@
 import React, { useState, useEffect } from "react"
 import TranslatorApp from "./TranslatorApp"
 import SettingsOverlay from "./components/SettingsOverlay"
-import BootScreen from "./components/BootScreen"
 import { testConnectionAPI } from "./utils/api"
 
 // App shell: owns the global config (keyboardMode and themeColor persist in
@@ -39,11 +38,6 @@ function App() {
   })
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  // Gate the UI on backend/warmup.py finishing so the first translation is not
-  // the thing that pays to load Gemma + the Moonshine models. If the backend
-  // reports it is already warm, BootScreen calls onReady on its first poll and
-  // this is invisible.
-  const [isBooted, setIsBooted] = useState(false)
   // Simple mode: when on, translations are also rewritten to a 6th-grade
   // reading level. It is a sticky mode, not a one-shot action, so the button
   // reflects state rather than triggering something.
@@ -62,10 +56,8 @@ function App() {
   }
 
   useEffect(() => {
-    // Only probe the LLM once warm-up is done; before that it is either
-    // unreachable or busy loading weights.
-    if (isBooted) testConnection()
-  }, [isBooted])
+    testConnection()
+  }, [])
 
   useEffect(() => {
     localStorage.setItem("keyboardMode", config.keyboardMode)
@@ -81,14 +73,6 @@ function App() {
       localStorage.setItem("themeColor", config.themeColor)
     }
   }, [config.themeColor])
-
-  if (!isBooted) {
-    return (
-      <div className="app-container">
-        <BootScreen onReady={() => setIsBooted(true)} />
-      </div>
-    )
-  }
 
   return (
     <div className="app-container">
