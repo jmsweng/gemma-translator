@@ -163,15 +163,29 @@ function TranslatorApp({
     }
   }, [micError])
 
+  // Current TTS playback session. Each playTTS call gets a fresh one so a
+  // stopped or superseded session's pending fetches can't start playing.
+  const ttsSessionRef = useRef(null)
+
   const stopSpeaking = useCallback(() => {
+    const session = ttsSessionRef.current
+    if (session) {
+      session.cancelled = true
+      session.urls.forEach((u) => URL.revokeObjectURL(u))
+      ttsSessionRef.current = null
+    }
     if (onlineAudioPlayerRef.current) {
       onlineAudioPlayerRef.current.pause()
       onlineAudioPlayerRef.current = null
     }
   }, [])
 
-  // Speak text via /api/tts, splitting into ~180-char chunks and chaining
-  // playback so long translations don't overflow a single TTS request.
+  // Speak text via /api/tts. The text is split into chunks (short first chunk
+  // so speech starts fast), and the chunks are synthesized one after another
+  // starting immediately, so chunk N+1 is being generated while chunk N plays
+  // and there is no gap between them. Requests are made strictly in order:
+  // the backend synthesizes one at a time but in no particular order, so
+  // firing them all at once could make the first chunk wait behind later ones.
   const playTTS = useCallback(
     (text, targetLang) => {
       if (!text) return
@@ -180,33 +194,59 @@ function TranslatorApp({
       const chunks = splitTextIntoSpeechChunks(text)
       if (chunks.length === 0) return
 
-      let chunkIndex = 0
+      const session = { cancelled: false, urls: [] }
+      ttsSessionRef.current = session
 
-      const playNextChunk = () => {
-        if (chunkIndex >= chunks.length) {
+      const fetchChunk = async (chunk) => {
+        if (session.cancelled) return null
+        const ttsUrl = `/api/tts?text=${encodeURIComponent(chunk)}&lang=${encodeURIComponent(targetLang)}`
+        const res = await fetch(ttsUrl)
+        if (!res.ok) throw new Error(`TTS ${res.status}`)
+        const url = URL.createObjectURL(await res.blob())
+        if (session.cancelled) {
+          URL.revokeObjectURL(url)
+          return null
+        }
+        session.urls.push(url)
+        return url
+      }
+
+      // audio[i] resolves to a playable URL for chunk i; each fetch starts
+      // when the previous one finishes.
+      const audio = []
+      let chain = Promise.resolve()
+      for (const chunk of chunks) {
+        chain = chain.then(() => fetchChunk(chunk))
+        audio.push(chain)
+      }
+
+      const fail = (e) => {
+        if (session.cancelled) return
+        console.error("TTS playback error:", e)
+        stopSpeaking()
+        alert("TTS playback failed. Backend server may be offline.")
+      }
+
+      const playChunk = (i) => {
+        if (session.cancelled) return
+        if (i >= chunks.length) {
           stopSpeaking()
           return
         }
-        const ttsUrl = `/api/tts?text=${encodeURIComponent(chunks[chunkIndex])}&lang=${encodeURIComponent(targetLang)}`
-        const player = new Audio(ttsUrl)
-        player.volume = 1.0
-        onlineAudioPlayerRef.current = player
-
-        player.onended = () => {
-          chunkIndex++
-          playNextChunk()
-        }
-        player.onerror = () => {
-          stopSpeaking()
-          alert("TTS playback failed. Backend server may be offline.")
-        }
-        player.play().catch((e) => {
-          console.error("Audio play error:", e)
-          stopSpeaking()
-        })
+        audio[i]
+          .then((url) => {
+            if (!url || session.cancelled) return
+            const player = new Audio(url)
+            player.volume = 1.0
+            onlineAudioPlayerRef.current = player
+            player.onended = () => playChunk(i + 1)
+            player.onerror = () => fail(new Error("audio element error"))
+            return player.play()
+          })
+          .catch(fail)
       }
 
-      playNextChunk()
+      playChunk(0)
     },
     [stopSpeaking],
   )

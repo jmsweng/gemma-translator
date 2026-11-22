@@ -182,20 +182,74 @@ export async function translateText(transcribedText, config) {
   }
 }
 
-// Word-safe chunking so each /api/tts request stays under ~`limit` chars.
-export function splitTextIntoSpeechChunks(text, limit = 180) {
-  const words = text.split(/\s+/)
-  const chunks = []
-  let currentChunk = ""
-  for (const word of words) {
-    if ((currentChunk + " " + word).trim().length <= limit) {
-      currentChunk = (currentChunk + " " + word).trim()
-    } else {
-      if (currentChunk) chunks.push(currentChunk)
-      currentChunk = word
+// Speech chunking for /api/tts. Each chunk is synthesized in full before it
+// can play, so chunk size is latency:
+//   - The first chunk is short (first sentence, or the first clause of a long
+//     one) so the voice starts quickly.
+//   - Each later chunk is synthesized while the previous one plays, so it can
+//     only be about as long as synthesis can keep up with. Chunks therefore
+//     grow gradually (at most 2x the previous chunk, up to `limit`) instead of
+//     jumping straight to `limit`, which left a pause after the first chunk.
+// Sentence ends include CJK and Arabic punctuation, and text with no spaces
+// (Japanese, Chinese) is still split; previously such a translation became
+// one chunk however long it was.
+const SENTENCE_RE = /[^]+?(?:[.!?](?=\s|$)|[。！？؟…]+|$)/gu
+const CLAUSE_CHARS = ",;:،、，；："
+const CJK_END = /[。！？、，]$/u
+
+// Cut the start off `text`, at most `max` chars: at clause punctuation if
+// possible, else a space, else a hard cut. Returns [head, rest].
+function takeHead(text, max) {
+  if (text.length <= max) return [text, ""]
+  const window = text.slice(0, max + 1)
+  let cut = -1
+  for (let i = window.length - 1; i > max * 0.3; i--) {
+    if (CLAUSE_CHARS.includes(window[i])) {
+      cut = i + 1
+      break
     }
   }
-  if (currentChunk) chunks.push(currentChunk)
-  return chunks
+  if (cut < 0) {
+    const space = window.lastIndexOf(" ")
+    cut = space > max * 0.3 ? space : max
+  }
+  return [text.slice(0, cut).trim(), text.slice(cut).trim()]
 }
 
+export function splitTextIntoSpeechChunks(text, limit = 180, firstLimit = 80) {
+  const queue = (text.match(SENTENCE_RE) || [])
+    .map((x) => x.trim())
+    .filter(Boolean)
+  const chunks = []
+  const cap = () =>
+    chunks.length === 0
+      ? firstLimit
+      : Math.min(limit, Math.max(firstLimit, 2 * chunks[chunks.length - 1].length))
+
+  let current = ""
+  while (queue.length) {
+    const sentence = queue.shift()
+    const max = cap()
+    const sep = current && !CJK_END.test(current) ? " " : ""
+    if ((current + sep + sentence).length <= max) {
+      current += sep + sentence
+      // The first chunk is just the first sentence, never packed.
+      if (chunks.length === 0) {
+        chunks.push(current)
+        current = ""
+      }
+    } else if (current) {
+      // Full: close this chunk and retry the sentence against the next cap.
+      chunks.push(current)
+      current = ""
+      queue.unshift(sentence)
+    } else {
+      // A single sentence longer than the cap: emit its head, requeue the rest.
+      const [head, rest] = takeHead(sentence, max)
+      chunks.push(head)
+      if (rest) queue.unshift(rest)
+    }
+  }
+  if (current) chunks.push(current)
+  return chunks
+}
