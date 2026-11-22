@@ -38,17 +38,24 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SUPPORTED_STT_LANGS = {"en", "ar", "es", "ja", "zh", "ko"}
 MAX_MODELS = 2
 # STT model architecture per language, pinned so a moonshine-voice upgrade can't
-# silently swap models. These are the moonshine-voice 0.1.6 defaults; 0.0.65 used
-# Base for es/ja/zh/ar. Any language can go back to ModelArch.BASE (Moonshine
-# Community License) if accuracy regresses. Names, not enum values, so this module
-# imports without moonshine_voice; backend/download_models.py reads the same map.
+# silently swap models. Chosen from FLEURS test clips scored with eval_stt.py on
+# the Pi (30 clips each; error rate, compute s per s of audio):
+#   en  Medium Streaming 12.1% / 0.38   (Base 14.1% / 0.14)
+#   es  Small Streaming   5.8% / 0.20   (Base  2.0% / 0.82: too slow to talk to)
+#   ja  Small Streaming   8.3% / 0.17   (Base 14.6% / 0.20, cut off endings)
+#   zh  Base             10.9% / 0.21   (Tiny Streaming 13.6% / 0.06)
+#   ar  Tiny Streaming   14.3% / 0.08   (Base 21.0% / 0.36)
+#   ko  Tiny             10.2% / 0.19   (only model; see STT_OPTIONS)
+# Base and Korean Tiny are under the non-commercial Moonshine Community License.
+# Names, not enum values, so this module imports without moonshine_voice;
+# backend/download_models.py reads the same map.
 STT_ARCH = {
     "en": "MEDIUM_STREAMING",
     "es": "SMALL_STREAMING",
     "ja": "SMALL_STREAMING",
-    "zh": "TINY_STREAMING",
+    "zh": "BASE",  # more accurate than Tiny Streaming; still well under 1 s per sentence
     "ar": "TINY_STREAMING",
-    "ko": "TINY",  # only a non-streaming Tiny exists (Community License)
+    "ko": "TINY",  # only a non-streaming Tiny exists
 }
 # Extra Transcriber options per language (values must be strings). The default
 # max_tokens_per_second (6.5) can cut off valid output in non-Latin scripts.

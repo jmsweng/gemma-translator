@@ -172,9 +172,12 @@ Upgraded from 0.0.65 (`backend/requirements.txt`, `backend/server.py`).
 - **TTS loading:** `TextToSpeech(lang, voice=...)` raises `TypeError` since
   0.1.1. The server now uses `TextToSpeech().language(tag).voice(id).load()`.
 - **Pinned STT models:** `STT_ARCH` in `server.py` names the model for each
-  language, so a later upgrade can't silently change it. The pins are the
-  0.1.6 defaults: en Medium Streaming, es/ja Small Streaming, zh/ar Tiny
-  Streaming, ko Tiny. 0.0.65 used Base for es/ja/zh/ar.
+  language, so a later upgrade can't silently change it: en Medium Streaming,
+  es/ja Small Streaming, ar Tiny Streaming, ko Tiny (the 0.1.6 defaults), and
+  zh Base, which was more accurate than the default Tiny Streaming. 0.0.65
+  used Base for es/ja/zh/ar. The choices come from FLEURS clips scored on the
+  Pi; the numbers are in the comment above `STT_ARCH`. Chinese (Base) and
+  Korean use the non-commercial Moonshine Community License.
 - **Transcriber options:** `max_tokens_per_second` is 13.0 for ja/zh/ar/ko,
   since the 6.5 default can cut off output in those scripts.
   `STT_VAD_THRESHOLD` sets `vad_threshold` for all languages, for testing.
