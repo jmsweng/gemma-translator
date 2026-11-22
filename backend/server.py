@@ -37,6 +37,30 @@ from collections import OrderedDict
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SUPPORTED_STT_LANGS = {"en", "ar", "es", "ja", "zh", "ko"}
 MAX_MODELS = 2
+# STT model architecture per language, pinned so a moonshine-voice upgrade can't
+# silently swap models. These are the moonshine-voice 0.1.6 defaults; 0.0.65 used
+# Base for es/ja/zh/ar. Any language can go back to ModelArch.BASE (Moonshine
+# Community License) if accuracy regresses. Names, not enum values, so this module
+# imports without moonshine_voice; backend/download_models.py reads the same map.
+STT_ARCH = {
+    "en": "MEDIUM_STREAMING",
+    "es": "SMALL_STREAMING",
+    "ja": "SMALL_STREAMING",
+    "zh": "TINY_STREAMING",
+    "ar": "TINY_STREAMING",
+    "ko": "TINY",  # only a non-streaming Tiny exists (Community License)
+}
+# Extra Transcriber options per language (values must be strings). The default
+# max_tokens_per_second (6.5) can cut off valid output in non-Latin scripts.
+STT_OPTIONS = {
+    "ja": {"max_tokens_per_second": "13.0"},
+    "zh": {"max_tokens_per_second": "13.0"},
+    "ar": {"max_tokens_per_second": "13.0"},
+    "ko": {"max_tokens_per_second": "13.0"},
+}
+# Optional global VAD threshold override for testing (default 0.5), e.g.
+# STT_VAD_THRESHOLD=0.6 ./start.sh
+STT_VAD_THRESHOLD = os.environ.get("STT_VAD_THRESHOLD", "").strip()
 _stt_recognizers = OrderedDict()  # language -> recognizer
 # RLock (reentrant): handle_stt holds the lock across get_stt_recognizer() + inference,
 # and get_stt_recognizer() re-acquires it on the same thread. A plain Lock() self-deadlocks.
@@ -54,6 +78,9 @@ TTS_LANG_MAP = {
     "ja": "ja-jp",
     "zh": "zh-hans",
     "ko": "ko-kr",
+    # Output only for now: there is no Italian STT model yet, so the UI blocks
+    # Italian as an input language (see SUPPORTED_STT_LANGS).
+    "it": "it-it",
 }
 # Optional per-language voice override (moonshine-voice voice IDs). Languages not
 # listed here use moonshine's default voice for that language.
@@ -65,6 +92,15 @@ _tts_engines = OrderedDict()  # our-lang-code -> TextToSpeech
 # and get_tts_engine() re-acquires it on the same thread. A plain Lock() self-deadlocks.
 _tts_lock = threading.RLock()
 _tts_resident = frozenset()  # see _stt_resident
+
+def _close_quietly(model):
+    """Free an evicted model's native memory now instead of waiting for GC.
+    Callers hold the model's lock, so nothing else is using it."""
+    try:
+        model.close()
+    except Exception as e:
+        print(f"[Models] close() failed: {e}")
+
 
 def get_tts_engine(language="en"):
     if language not in TTS_LANG_MAP:
@@ -80,13 +116,16 @@ def get_tts_engine(language="en"):
         if len(_tts_engines) >= MAX_MODELS:
             oldest_lang, oldest_engine = _tts_engines.popitem(last=False)
             print(f"[TTS] Evicting model for {oldest_lang}")
+            _close_quietly(oldest_engine)
             del oldest_engine
         global _tts_resident
         try:
+            # moonshine-voice >= 0.1.1: no constructor args; configure, then load().
+            tts = TextToSpeech().language(moon_lang)
             if voice:
-                _tts_engines[language] = TextToSpeech(moon_lang, voice=voice)
-            else:
-                _tts_engines[language] = TextToSpeech(moon_lang)
+                tts = tts.voice(voice)
+            tts.load()
+            _tts_engines[language] = tts
         finally:
             _tts_resident = frozenset(_tts_engines)
         return _tts_engines[language]
@@ -98,16 +137,22 @@ def get_stt_recognizer(language="en"):
         if language in _stt_recognizers:
             _stt_recognizers.move_to_end(language)
             return _stt_recognizers[language]
-        from moonshine_voice import get_model_for_language, Transcriber
-        print(f"[STT] Loading Moonshine STT (lang={language})...")
+        from moonshine_voice import get_model_for_language, Transcriber, ModelArch
+        arch = ModelArch[STT_ARCH[language]]
+        options = dict(STT_OPTIONS.get(language, {}))
+        if STT_VAD_THRESHOLD:
+            options["vad_threshold"] = STT_VAD_THRESHOLD
+        print(f"[STT] Loading Moonshine STT (lang={language}, arch={arch.name}, options={options or 'default'})...")
         if len(_stt_recognizers) >= MAX_MODELS:
             oldest_lang, oldest_recognizer = _stt_recognizers.popitem(last=False)
             print(f"[STT] Evicting model for {oldest_lang}")
+            _close_quietly(oldest_recognizer)
             del oldest_recognizer
         global _stt_resident
         try:
-            model_path, model_arch = get_model_for_language(language)
-            _stt_recognizers[language] = Transcriber(model_path=model_path, model_arch=model_arch)
+            model_path, model_arch = get_model_for_language(language, arch)
+            _stt_recognizers[language] = Transcriber(model_path=model_path, model_arch=model_arch,
+                                                     options=options or None)
         finally:
             _stt_resident = frozenset(_stt_recognizers)
         return _stt_recognizers[language]
@@ -154,7 +199,8 @@ WARMUP_TIMINGS_PATH = os.path.join(BASE_DIR, ".warmup_timings.json")
 # First-boot guesses for a Pi 5 (seconds); replaced by measured values.
 DEFAULT_ETAS = {"llm": 45.0, "stt": 12.0, "tts": 14.0}
 LANG_NAMES = {"ar": "Arabic", "en": "English", "es": "Spanish",
-              "ja": "Japanese", "zh": "Chinese", "ko": "Korean"}
+              "ja": "Japanese", "zh": "Chinese", "ko": "Korean",
+              "it": "Italian"}
 
 # One condition variable guards all warm-up state. Never wait on _stt_lock /
 # _tts_lock while holding it (a load can hold those for many seconds); use the

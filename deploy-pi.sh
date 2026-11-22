@@ -32,7 +32,7 @@ if [ "$(uname -s)" != "Linux" ]; then
     echo "[WARNING] Current OS: $(uname -s)."
 fi
 
-echo "[1/7] Installing OS dependencies..."
+echo "[1/8] Installing OS dependencies..."
 if command -v apt-get &> /dev/null; then
     sudo apt-get update
     sudo apt-get install -y python3-venv python3-pip ffmpeg libasound2-dev pulseaudio-utils alsa-utils
@@ -58,17 +58,22 @@ if [ -n "$NODE_MAJOR" ] && [ "$NODE_MAJOR" -lt 18 ] 2>/dev/null; then
     echo "[WARNING] Step 3 (npm build) may fail. Please upgrade Node.js first."
 fi
 
-echo "[2/7] Running backend environment setup..."
+echo "[2/8] Running backend environment setup..."
 "${PROJECT_DIR}/setup.sh"
 
-echo "[3/7] Installing frontend dependencies & building production UI..."
+echo "[3/8] Installing frontend dependencies & building production UI..."
 npm --prefix "${PROJECT_DIR}/frontend" install
 npm --prefix "${PROJECT_DIR}/frontend" run build
 
-echo "[4/7] Downloading LiteRT model..."
+echo "[4/8] Downloading LiteRT model..."
 "${PROJECT_DIR}/download_model.sh"
 
-echo "[5/7] Registering systemd service..."
+echo "[5/8] Downloading Moonshine speech models (STT + TTS) for offline use..."
+# The kiosk runs offline and the server loads models on first use, so fetch
+# every pinned model and voice now while the network is up.
+"${PROJECT_DIR}/venv/bin/python" "${PROJECT_DIR}/backend/download_models.py"
+
+echo "[6/8] Registering systemd service..."
 SERVICE_FILE="/etc/systemd/system/gemma-translator.service"
 TEMPLATE_FILE="${PROJECT_DIR}/deploy/gemma-translator.service"
 
@@ -83,7 +88,7 @@ if [ -f "$TEMPLATE_FILE" ]; then
     sudo systemctl enable gemma-translator.service
     sudo systemctl restart gemma-translator.service
 
-    echo "[6/7] Configuring GUI kiosk autostart..."
+    echo "[7/8] Configuring GUI kiosk autostart..."
     LXSESSION_DIR="/home/${CURRENT_USER}/.config/lxsession/rpd-x"
     AUTOSTART_FILE="${LXSESSION_DIR}/autostart"
     if [ -d "$LXSESSION_DIR" ] || [ -f "/etc/xdg/lxsession/rpd-x/autostart" ]; then
@@ -98,7 +103,7 @@ if [ -f "$TEMPLATE_FILE" ]; then
         echo "[INFO] LXDE rpd-x session not detected. Skipping LXDE autostart config."
     fi
 
-    echo "[7/7] Systemd service configured and started."
+    echo "[8/8] Systemd service configured and started."
     systemctl status --no-pager gemma-translator.service || true
 else
     echo "[ERROR] Template file ${TEMPLATE_FILE} not found."
