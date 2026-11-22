@@ -409,6 +409,9 @@ def _status_locked():
         "remaining": round(left, 1) if _warm["busy"] else 0.0,
         "label": current["label"] if current else ("Finishing" if _warm["busy"] else "Ready"),
         "loading_langs": [{"code": l, "name": LANG_NAMES.get(l, l)} for l in loading_langs],
+        # The lane pair this job is for, in lane order; the UI writes the
+        # loading message once in each of these languages.
+        "langs": list(_warm["langs"]),
         "steps": [{"id": st["id"], "label": st["label"], "status": st["status"]} for st in steps],
         "error": _warm["error"],
     }

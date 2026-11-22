@@ -32,6 +32,51 @@ function formatRemaining(seconds) {
   return `~${Math.ceil(seconds / 60)}m LEFT`
 }
 
+// Swap-bar text in each UI language. The bar shows one line per lane, in that
+// lane's language, so both people can read what is loading.
+// names[x] = how this language writes language x.
+const SWAP_TEXT = {
+  en: {
+    loading: (x) => `Loading ${x}`,
+    ready: "Ready",
+    names: { ar: "Arabic", en: "English", es: "Spanish", ja: "Japanese", zh: "Chinese", ko: "Korean" },
+  },
+  es: {
+    loading: (x) => `Cargando ${x}`,
+    ready: "Listo",
+    names: { ar: "árabe", en: "inglés", es: "español", ja: "japonés", zh: "chino", ko: "coreano" },
+  },
+  ar: {
+    loading: (x) => `جارٍ تحميل ${x}`,
+    ready: "جاهز",
+    names: { ar: "العربية", en: "الإنجليزية", es: "الإسبانية", ja: "اليابانية", zh: "الصينية", ko: "الكورية" },
+    rtl: true,
+  },
+  ja: {
+    loading: (x) => `${x}を読み込み中`,
+    ready: "準備完了",
+    names: { ar: "アラビア語", en: "英語", es: "スペイン語", ja: "日本語", zh: "中国語", ko: "韓国語" },
+  },
+  zh: {
+    loading: (x) => `正在加载${x}`,
+    ready: "已就绪",
+    names: { ar: "阿拉伯语", en: "英语", es: "西班牙语", ja: "日语", zh: "中文", ko: "韩语" },
+  },
+  ko: {
+    loading: (x) => `${x} 불러오는 중`,
+    ready: "준비 완료",
+    names: { ar: "아랍어", en: "영어", es: "스페인어", ja: "일본어", zh: "중국어", ko: "한국어" },
+  },
+}
+
+// One line of the swap bar, written in `uiLang`, naming the languages loading.
+function swapLine(uiLang, loadingCodes, finished) {
+  const t = SWAP_TEXT[uiLang] || SWAP_TEXT.en
+  if (finished) return { text: t.ready.toLocaleUpperCase(uiLang), rtl: t.rtl }
+  const names = loadingCodes.map((c) => t.names[c] || c).join(" + ")
+  return { text: t.loading(names).toLocaleUpperCase(uiLang), rtl: t.rtl }
+}
+
 function Bar({ progress }) {
   const pct = Math.round(Math.min(Math.max(progress, 0), 1) * 100)
   return (
@@ -117,14 +162,27 @@ function WarmupOverlay({ status, displayProgress, reachable }) {
     )
   }
 
-  const names = (shown.loading_langs || []).map((l) => l.name.toUpperCase())
+  const loadingCodes = (shown.loading_langs || []).map((l) => l.code)
+  // Lane order, e.g. ["en", "es"]: line 1 in lane 1's language, line 2 in
+  // lane 2's. Older backends don't send langs; fall back to English only.
+  const uiLangs = shown.langs?.length ? shown.langs : ["en"]
+  const lines = uiLangs.map((l) => ({ lang: l, ...swapLine(l, loadingCodes, shown.finished) }))
   return (
     <div className="warmup-swap" aria-live="polite">
       <div className="warmup-swap-row">
-        <span className="warmup-swap-label">
-          {shown.finished ? "READY" : `LOADING ${names.join(" + ") || "MODELS"}`}
-        </span>
-        <span>{pct}%</span>
+        <div className="warmup-swap-lines">
+          {lines.map((ln) => (
+            <span
+              key={ln.lang}
+              lang={ln.lang}
+              dir={ln.rtl ? "rtl" : "ltr"}
+              className="warmup-swap-label"
+            >
+              {ln.text}
+            </span>
+          ))}
+        </div>
+        <span className="warmup-swap-pct">{pct}%</span>
       </div>
       <Bar progress={progress} />
     </div>

@@ -1107,10 +1107,31 @@ body {
   font-weight: 700;
 }
 
+.warmup-swap-row {
+  align-items: center;
+  gap: 8px;
+}
+
+.warmup-swap-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Each line takes its own direction (Arabic is RTL) but stays left-aligned
+   so the two lines start in the same place. */
 .warmup-swap-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: left;
+  unicode-bidi: plaintext;
+}
+
+.warmup-swap-pct {
+  flex-shrink: 0;
 }
 
 @keyframes warmup-drop {
