@@ -85,6 +85,8 @@ This automated script installs Debian audio/venv packages, sets up the Python en
 ```bash
 cd ~/gemma-translator
 git pull
+venv/bin/pip install --require-hashes -r backend/requirements.txt  # when requirements.txt changes
+venv/bin/python backend/download_models.py  # while online, when models or voices change
 npm --prefix frontend install    # only needed when frontend/package.json changes
 npm --prefix frontend run build  # required: start.sh --prod only builds when frontend/dist/ is missing
 sudo systemctl restart gemma-translator.service

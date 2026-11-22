@@ -165,6 +165,42 @@ In a test with a stub voice that generates audio at 40% of real time, on a
 instead of 5.0 s, and the pauses between chunks went from 0.5 s to almost
 zero. The real speed-up depends on the Pi's voice synthesis speed.
 
+### 8. moonshine-voice 0.1.6
+
+Upgraded from 0.0.65 (`backend/requirements.txt`, `backend/server.py`).
+
+- **TTS loading:** `TextToSpeech(lang, voice=...)` raises `TypeError` since
+  0.1.1. The server now uses `TextToSpeech().language(tag).voice(id).load()`.
+- **Pinned STT models:** `STT_ARCH` in `server.py` names the model for each
+  language, so a later upgrade can't silently change it. The pins are the
+  0.1.6 defaults: en Medium Streaming, es/ja Small Streaming, zh/ar Tiny
+  Streaming, ko Tiny. 0.0.65 used Base for es/ja/zh/ar.
+- **Transcriber options:** `max_tokens_per_second` is 13.0 for ja/zh/ar/ko,
+  since the 6.5 default can cut off output in those scripts.
+  `STT_VAD_THRESHOLD` sets `vad_threshold` for all languages, for testing.
+- **Eviction:** an evicted model is `close()`d so its memory is freed right
+  away.
+- **Model pre-download:** models must be re-downloaded (0.1.x only loads
+  `.ort` files and changed the voice file layout). `backend/download_models.py`
+  fetches every model and voice the server uses; `deploy-pi.sh` runs it.
+- **Hashed requirements:** `setup.sh` installs with `--require-hashes`, but
+  the file had no hashes, so a clean install failed. `requirements.txt` is now
+  generated from `requirements.in` by `pip-compile --generate-hashes` and adds
+  `google-crc32c`, a new moonshine-voice dependency.
+
+### 9. Italian output and a scrolling language picker
+
+- **Italian as a listening language:** Italian is in the language list and
+  speaks with the `it-it` voice, so others can speak to an Italian listener.
+  There is no Italian speech recognition yet, so an Italian lane's talk button
+  is disabled and reads SOLO ASCOLTO ("listen only"), and the Z/X keys do
+  nothing on that lane. Otherwise the backend would transcribe the audio as
+  English.
+- **Scrolling picker:** the picker keeps its tile size (two rows of three)
+  and scrolls for more. Tiles select on tap rather than on touch-down, so
+  swiping to scroll doesn't pick a language, and a ▼ shows when there's more
+  below. The Italian tile is marked LISTEN ONLY.
+
 ## API and configuration added
 
 ### `GET /api/warmup`
@@ -201,6 +237,7 @@ marked busy.
 | `WARMUP_LLM_MODEL` | `gemma4-e2b` | Model name for the Gemma warm-up; must match the UI's model name |
 | `WARMUP_LLM_URL` | `http://127.0.0.1:9379/v1/chat/completions` | litert-lm endpoint |
 | `WARMUP_LLM_WAIT` | `180` | Seconds to keep retrying the Gemma warm-up |
+| `STT_VAD_THRESHOLD` | unset (library default 0.5) | `vad_threshold` for every STT model; for testing filler-word hallucinations |
 
 ## Tried and reverted
 
@@ -233,6 +270,8 @@ These commits are in the history but their changes are not in the current code:
 ```bash
 cd ~/gemma-translator
 git pull
+venv/bin/pip install --require-hashes -r backend/requirements.txt  # when requirements.txt changes
+venv/bin/python backend/download_models.py  # while online, when models or voices change
 npm --prefix frontend install   # only needed when frontend/package.json changes
 npm --prefix frontend run build # required: start.sh --prod only builds when dist/ is missing
 sudo systemctl restart gemma-translator.service
