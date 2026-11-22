@@ -52,11 +52,15 @@ STT_ARCH = {
 }
 # Extra Transcriber options per language (values must be strings). The default
 # max_tokens_per_second (6.5) can cut off valid output in non-Latin scripts.
+# Korean needs more: at 13.0, 4 of 30 FLEURS ko_kr clips were cut off mid-word
+# (one mid-character); at 26.0, none were and CER fell 11.2% -> 10.2%. A higher
+# cap also lets a hallucinated tail run longer, so don't raise it further
+# without re-running eval_stt.py.
 STT_OPTIONS = {
     "ja": {"max_tokens_per_second": "13.0"},
     "zh": {"max_tokens_per_second": "13.0"},
     "ar": {"max_tokens_per_second": "13.0"},
-    "ko": {"max_tokens_per_second": "13.0"},
+    "ko": {"max_tokens_per_second": "26.0"},
 }
 # Optional global VAD threshold override for testing (default 0.5), e.g.
 # STT_VAD_THRESHOLD=0.6 ./start.sh
