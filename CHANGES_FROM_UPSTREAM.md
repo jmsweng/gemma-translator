@@ -178,8 +178,12 @@ Upgraded from 0.0.65 (`backend/requirements.txt`, `backend/server.py`).
 - **Transcriber options:** `max_tokens_per_second` is 13.0 for ja/zh/ar/ko,
   since the 6.5 default can cut off output in those scripts.
   `STT_VAD_THRESHOLD` sets `vad_threshold` for all languages, for testing.
-- **Eviction:** an evicted model is `close()`d so its memory is freed right
-  away.
+- **Eviction and memory:** an evicted model is `close()`d and the server then
+  calls glibc's `malloc_trim(0)`, and `start.sh` sets `MALLOC_ARENA_MAX=2`.
+  Without these, memory freed on a language swap stayed stranded in
+  per-thread malloc arenas: on a Pi 5, `server.py` grew from 1.8 GB to 5.6 GB
+  over five passes through all languages, versus about 2.4 GB with the arena
+  limit alone.
 - **Model pre-download:** models must be re-downloaded (0.1.x only loads
   `.ort` files and changed the voice file layout). `backend/download_models.py`
   fetches every model and voice the server uses; `deploy-pi.sh` runs it.

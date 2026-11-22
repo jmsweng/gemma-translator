@@ -32,6 +32,13 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 # (block-buffered prints previously hid request logs and hampered debugging)
 export PYTHONUNBUFFERED=1
 
+# Limit glibc to 2 malloc arenas. server.py handles each request on a new
+# thread, and with the default (up to 8 per core) memory freed when a speech
+# model is swapped out stays stranded in per-thread arenas, so RSS kept growing
+# with every language change (1.8 GB -> 5.6 GB over five passes through all
+# languages on a Pi 5; ~2.4 GB with this set). An existing value wins.
+export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
+
 # Kill existing processes only if NOT running under systemd
 # (systemd handles process lifecycle; killing ports here causes crash loops)
 if [ -z "$INVOCATION_ID" ]; then

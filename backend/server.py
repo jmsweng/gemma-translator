@@ -93,13 +93,29 @@ _tts_engines = OrderedDict()  # our-lang-code -> TextToSpeech
 _tts_lock = threading.RLock()
 _tts_resident = frozenset()  # see _stt_resident
 
+try:
+    import ctypes
+    _libc = ctypes.CDLL("libc.so.6")
+    _malloc_trim = _libc.malloc_trim
+    _malloc_trim.argtypes = [ctypes.c_size_t]
+except (OSError, AttributeError):  # not glibc (e.g. macOS): nothing to trim
+    _malloc_trim = None
+
+
 def _close_quietly(model):
-    """Free an evicted model's native memory now instead of waiting for GC.
+    """Free an evicted model's native memory now instead of waiting for GC,
+    then ask glibc to return freed pages to the OS. Without the trim, RSS
+    kept climbing across language swaps even though the models were freed.
     Callers hold the model's lock, so nothing else is using it."""
     try:
         model.close()
     except Exception as e:
         print(f"[Models] close() failed: {e}")
+    if _malloc_trim is not None:
+        try:
+            _malloc_trim(0)
+        except Exception as e:
+            print(f"[Models] malloc_trim failed: {e}")
 
 
 def get_tts_engine(language="en"):
