@@ -17,6 +17,8 @@
 import React, { useState, useEffect } from "react"
 import TranslatorApp from "./TranslatorApp"
 import SettingsOverlay from "./components/SettingsOverlay"
+import WarmupOverlay from "./components/WarmupOverlay"
+import { useWarmup } from "./hooks/useWarmup"
 import { testConnectionAPI } from "./utils/api"
 
 // App shell: owns the global config (keyboardMode and themeColor persist in
@@ -38,6 +40,12 @@ function App() {
   })
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  // Model warm-up progress. While the boot job runs (or the backend isn't up
+  // yet) the boot screen covers the UI and push-to-talk keys are ignored.
+  const warmup = useWarmup()
+  const bootLocked =
+    !warmup.reachable ||
+    (warmup.status?.busy && warmup.status.phase === "boot")
   // Simple mode: when on, translations are also rewritten to a 6th-grade
   // reading level. It is a sticky mode, not a one-shot action, so the button
   // reflects state rather than triggering something.
@@ -116,7 +124,11 @@ function App() {
       </div>
 
       <div style={{ height: '100%' }}>
-        <TranslatorApp config={config} simpleMode={simpleMode} />
+        <TranslatorApp
+          config={config}
+          simpleMode={simpleMode}
+          inputLocked={bootLocked}
+        />
       </div>
 
       <SettingsOverlay
@@ -126,6 +138,8 @@ function App() {
         setConfig={setConfig}
         onTestConnection={testConnection}
       />
+
+      <WarmupOverlay {...warmup} />
     </div>
   )
 }

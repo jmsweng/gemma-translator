@@ -25,6 +25,7 @@ import {
   transcribeAudio,
   translateText,
   splitTextIntoSpeechChunks,
+  warmLanguages,
 } from "./utils/api"
 import { playBlip } from "./utils/audio-blip"
 
@@ -92,7 +93,13 @@ const SIMPLE_PROMPT = (src, dst) =>
 function TranslatorApp({
   config,
   simpleMode = false,
+  inputLocked = false,
 }) {
+  // Read inside the key handlers via a ref so the listener effect's deps
+  // don't change when the boot screen goes away.
+  const inputLockedRef = useRef(inputLocked)
+  inputLockedRef.current = inputLocked
+
   // UI State
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [activePerson, setActivePerson] = useState(1)
@@ -132,6 +139,18 @@ function TranslatorApp({
 
   const { isRecording, startRecording, stopRecording, analyser, micError } =
     useAudioRecorder()
+
+  // Pre-load models for the current lane pair. Debounced so rotating through
+  // the language revolver only loads where the user stops.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      warmLanguages([
+        AVAILABLE_LANGUAGES[lang1Index].code,
+        AVAILABLE_LANGUAGES[lang2Index].code,
+      ])
+    }, 700)
+    return () => clearTimeout(t)
+  }, [lang1Index, lang2Index])
 
   useEffect(() => {
     if (micError) {
@@ -423,6 +442,7 @@ function TranslatorApp({
   // keydown starts recording, keyup stops — e.repeat guards auto-repeat.
   useEffect(() => {
     const handleKeyDown = (e) => {
+      if (inputLockedRef.current) return
       if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return
       const key = e.key.toLowerCase()
 

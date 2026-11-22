@@ -23,3 +23,6 @@ server.log
 *.ogg
 *.flac
 coverage/
+
+# Measured warm-up durations (drives the loading bar ETA)
+backend/.warmup_timings.json

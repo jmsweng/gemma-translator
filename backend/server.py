@@ -26,6 +26,7 @@ import wave
 import traceback
 import socket
 import ssl
+import time
 
 import threading
 from collections import OrderedDict
@@ -40,6 +41,8 @@ _stt_recognizers = OrderedDict()  # language -> recognizer
 # RLock (reentrant): handle_stt holds the lock across get_stt_recognizer() + inference,
 # and get_stt_recognizer() re-acquires it on the same thread. A plain Lock() self-deadlocks.
 _stt_lock = threading.RLock()
+# Immutable snapshot of loaded STT languages, readable without taking _stt_lock.
+_stt_resident = frozenset()
 
 # Multilingual TTS via moonshine-voice (Kokoro / Piper backed). Language is fixed at
 # TextToSpeech construction, so we lazily build (and cache) one engine per language used.
@@ -61,6 +64,7 @@ _tts_engines = OrderedDict()  # our-lang-code -> TextToSpeech
 # RLock (reentrant): handle_tts holds the lock across get_tts_engine() + synthesis,
 # and get_tts_engine() re-acquires it on the same thread. A plain Lock() self-deadlocks.
 _tts_lock = threading.RLock()
+_tts_resident = frozenset()  # see _stt_resident
 
 def get_tts_engine(language="en"):
     if language not in TTS_LANG_MAP:
@@ -77,10 +81,14 @@ def get_tts_engine(language="en"):
             oldest_lang, oldest_engine = _tts_engines.popitem(last=False)
             print(f"[TTS] Evicting model for {oldest_lang}")
             del oldest_engine
-        if voice:
-            _tts_engines[language] = TextToSpeech(moon_lang, voice=voice)
-        else:
-            _tts_engines[language] = TextToSpeech(moon_lang)
+        global _tts_resident
+        try:
+            if voice:
+                _tts_engines[language] = TextToSpeech(moon_lang, voice=voice)
+            else:
+                _tts_engines[language] = TextToSpeech(moon_lang)
+        finally:
+            _tts_resident = frozenset(_tts_engines)
         return _tts_engines[language]
 
 def get_stt_recognizer(language="en"):
@@ -96,9 +104,319 @@ def get_stt_recognizer(language="en"):
             oldest_lang, oldest_recognizer = _stt_recognizers.popitem(last=False)
             print(f"[STT] Evicting model for {oldest_lang}")
             del oldest_recognizer
-        model_path, model_arch = get_model_for_language(language)
-        _stt_recognizers[language] = Transcriber(model_path=model_path, model_arch=model_arch)
+        global _stt_resident
+        try:
+            model_path, model_arch = get_model_for_language(language)
+            _stt_recognizers[language] = Transcriber(model_path=model_path, model_arch=model_arch)
+        finally:
+            _stt_resident = frozenset(_stt_recognizers)
         return _stt_recognizers[language]
+
+
+# ---------------------------------------------------------------------------
+# Warm-up
+#
+# Why the first translation was slow:
+#   1. litert-lm does not build the Gemma engine until the first
+#      /v1/chat/completions request arrives (litert_lm_cli serve_util:
+#      get_or_initialize_server_engine). That request pays the whole load.
+#   2. Moonshine STT/TTS are built lazily per language, and constructing them is
+#      not the whole cost: the first transcribe/synthesize call also does
+#      one-time allocation and graph setup.
+#   3. The UI starts on Arabic + English, not just English.
+#
+# So at boot we send one real throwaway request to each model, for both
+# starting lanes. When the UI changes a lane's language it POSTs /api/warmup
+# and we load what's missing before anyone talks.
+#
+# Work is organised as "jobs" (boot, or one language swap), each a list of
+# steps. GET /api/warmup reports the current job's progress for the UI's
+# loading bar. Progress is time-based: each step's expected duration is what
+# it took last time (saved to .warmup_timings.json), so the bar gets accurate
+# after the first boot.
+#
+# Race the previous attempt hit: the UI asked for a swap, polled immediately,
+# saw "ready" (nothing had started yet), and hid the overlay. Here the POST
+# marks the job busy *before* it returns, and returns the status itself.
+#
+# Set WARMUP_ENABLED=0 to switch all of this off.
+# ---------------------------------------------------------------------------
+WARMUP_ENABLED = os.environ.get("WARMUP_ENABLED", "1").lower() not in ("0", "false", "no")
+WARMUP_LANGS = [l.strip() for l in os.environ.get("WARMUP_LANGS", "ar,en").split(",") if l.strip()]
+# Must match the model name the UI sends (App.jsx default "gemma4-e2b"):
+# litert-lm re-initializes its engine when the requested model id changes, so a
+# warm-up under a different name would be thrown away on the first real request.
+WARMUP_LLM_MODEL = os.environ.get("WARMUP_LLM_MODEL", "gemma4-e2b")
+WARMUP_LLM_URL = os.environ.get("WARMUP_LLM_URL", "http://127.0.0.1:9379/v1/chat/completions")
+WARMUP_LLM_WAIT = int(os.environ.get("WARMUP_LLM_WAIT", "180"))
+WARMUP_TIMINGS_PATH = os.path.join(BASE_DIR, ".warmup_timings.json")
+
+# First-boot guesses for a Pi 5 (seconds); replaced by measured values.
+DEFAULT_ETAS = {"llm": 45.0, "stt": 12.0, "tts": 14.0}
+LANG_NAMES = {"ar": "Arabic", "en": "English", "es": "Spanish",
+              "ja": "Japanese", "zh": "Chinese", "ko": "Korean"}
+
+# One condition variable guards all warm-up state. Never wait on _stt_lock /
+# _tts_lock while holding it (a load can hold those for many seconds); use the
+# _stt_resident / _tts_resident snapshots instead.
+_warm_cv = threading.Condition()
+_warm = {"job": 0, "phase": "idle", "busy": False, "steps": [], "langs": [],
+         "started_at": None, "error": None}
+_warm_queued = None    # (job_id, steps, langs) for the worker to run
+_warm_pending = None   # lane pair asked for while a job was running (latest wins)
+_timings_lock = threading.Lock()
+
+
+def _load_timings():
+    try:
+        with open(WARMUP_TIMINGS_PATH) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_timing(key, seconds):
+    with _timings_lock:
+        t = _load_timings()
+        old = t.get(key)
+        # A step that was already warm (e.g. only server.py restarted, so Gemma
+        # was still loaded in litert-lm) finishes almost instantly. Don't let
+        # that wipe out the real cold-load time.
+        if old and seconds < 0.25 * old:
+            return
+        t[key] = round(seconds, 2)
+        try:
+            with open(WARMUP_TIMINGS_PATH, "w") as f:
+                json.dump(t, f)
+        except Exception:
+            pass  # read-only checkout etc.; ETAs just stay at their defaults
+
+
+def _make_step(kind, lang=None, timings=None):
+    key = "llm" if kind == "llm" else f"{kind}:{lang}"
+    name = LANG_NAMES.get(lang, (lang or "").upper())
+    label = {"llm": "Gemma translation model",
+             "stt": f"{name} speech recognition",
+             "tts": f"{name} voice"}[kind]
+    return {"id": key, "kind": kind, "lang": lang,
+            "track": "llm" if kind == "llm" else "speech",
+            "label": label, "status": "pending",
+            "eta": float((timings or {}).get(key, DEFAULT_ETAS[kind]))}
+
+
+def _missing_lang_steps(langs, timings):
+    steps = [_make_step("stt", l, timings) for l in langs
+             if l in SUPPORTED_STT_LANGS and l not in _stt_resident]
+    steps += [_make_step("tts", l, timings) for l in langs
+              if l in TTS_LANG_MAP and l not in _tts_resident]
+    return steps
+
+
+def _start_job_locked(phase, steps, langs):
+    """Caller holds _warm_cv. Publishes the job as busy immediately."""
+    global _warm_queued
+    _warm["job"] += 1
+    _warm.update(phase=phase, busy=True, steps=steps, langs=list(langs),
+                 started_at=time.time(), error=None)
+    _warm_queued = (_warm["job"], steps, list(langs))
+    _warm_cv.notify_all()
+
+
+def _finish_job_locked():
+    """Caller holds _warm_cv. Chain straight into a queued swap, or go idle."""
+    global _warm_pending
+    langs, _warm_pending = _warm_pending, None
+    if langs:
+        steps = _missing_lang_steps(langs, _load_timings())
+        if steps:
+            _start_job_locked("language", steps, langs)
+            return
+    _warm.update(busy=False, phase="idle")
+
+
+def _set_step(job, step_id, **fields):
+    with _warm_cv:
+        if _warm["job"] != job:
+            return
+        for st in _warm["steps"]:
+            if st["id"] == step_id:
+                st.update(fields)
+                if fields.get("status") == "error" and not _warm["error"]:
+                    _warm["error"] = f"{st['label']}: {fields.get('detail', 'failed')}"
+
+
+def _warm_llm():
+    """One short, real completion so litert-lm builds the engine now."""
+    payload = json.dumps({
+        "model": WARMUP_LLM_MODEL,
+        "messages": [
+            {"role": "system", "content": 'Translate into Arabic. Reply only with JSON: {"translation": "..."}'},
+            {"role": "user", "content": "Hello"},
+        ],
+    }).encode("utf-8")
+    deadline = time.time() + WARMUP_LLM_WAIT
+    last_err = None
+    while time.time() < deadline:
+        try:
+            req = urllib.request.Request(WARMUP_LLM_URL, data=payload, method="POST",
+                                         headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=WARMUP_LLM_WAIT) as resp:
+                resp.read()
+            return
+        except urllib.error.HTTPError as e:
+            last_err = f"HTTP {e.code}"
+            if 400 <= e.code < 500:  # e.g. wrong model name; retrying won't help
+                break
+            time.sleep(2)
+        except Exception as e:  # litert-lm not listening yet, etc.
+            last_err = str(e)
+            time.sleep(2)
+    raise RuntimeError(last_err or "timed out")
+
+
+def _run_step(job, st):
+    kind, lang = st["kind"], st["lang"]
+    _set_step(job, st["id"], status="running", started_at=time.time())
+    print(f"[Warmup] Loading {st['label']}...", flush=True)
+    t0 = time.time()
+    try:
+        if kind == "llm":
+            cold = True
+            _warm_llm()
+        elif kind == "stt":
+            cold = lang not in _stt_resident
+            with _stt_lock:
+                rec = get_stt_recognizer(lang)
+                # Quiet noise rather than pure zeros so the model actually runs.
+                rec.transcribe_without_streaming(
+                    (np.random.default_rng(0).standard_normal(16000) * 1e-3).astype(np.float32), 16000)
+        else:
+            cold = lang not in _tts_resident
+            with _tts_lock:
+                get_tts_engine(lang).synthesize("OK")
+        secs = time.time() - t0
+        if cold:
+            _save_timing(st["id"], secs)
+        _set_step(job, st["id"], status="done", seconds=round(secs, 2))
+        print(f"[Warmup] {st['label']} ready in {secs:.1f}s", flush=True)
+    except Exception as e:
+        _set_step(job, st["id"], status="error", detail=str(e))
+        print(f"[Warmup] {st['label']} failed ({e}); it will load on first use.", flush=True)
+
+
+def _run_job(job, steps, langs):
+    # Gemma lives in the litert-lm process, so it loads alongside Moonshine.
+    llm_steps = [st for st in steps if st["track"] == "llm"]
+    llm_thread = None
+    if llm_steps:
+        llm_thread = threading.Thread(
+            target=lambda: [_run_step(job, st) for st in llm_steps], daemon=True)
+        llm_thread.start()
+    # Touch the lane languages that are already loaded so the LRU caches evict
+    # the language being replaced, not the one staying on the other lane.
+    for lang in langs:
+        if lang in _stt_resident:
+            with _stt_lock:
+                get_stt_recognizer(lang)
+        if lang in _tts_resident:
+            with _tts_lock:
+                get_tts_engine(lang)
+    for st in steps:
+        if st["track"] == "speech":
+            _run_step(job, st)
+    if llm_thread:
+        llm_thread.join()
+
+
+def _warm_worker():
+    global _warm_queued
+    while True:
+        with _warm_cv:
+            while _warm_queued is None:
+                _warm_cv.wait()
+            job, steps, langs = _warm_queued
+            _warm_queued = None
+        t0 = time.time()
+        _run_job(job, steps, langs)
+        print(f"[Warmup] Job {job} done in {time.time() - t0:.1f}s", flush=True)
+        with _warm_cv:
+            _finish_job_locked()
+
+
+def request_warm_languages(langs):
+    """POST /api/warmup. Returns the status, already marked busy if work starts."""
+    global _warm_pending
+    langs = [l for l in dict.fromkeys(langs) if isinstance(l, str) and l][:MAX_MODELS]
+    with _warm_cv:
+        if WARMUP_ENABLED and langs:
+            if _warm["busy"]:
+                _warm_pending = langs
+            else:
+                steps = _missing_lang_steps(langs, _load_timings())
+                if steps:
+                    _start_job_locked("language", steps, langs)
+        return _status_locked()
+
+
+def start_warmup():
+    if not WARMUP_ENABLED:
+        print("[Warmup] Disabled (WARMUP_ENABLED=0); models load on first use.", flush=True)
+        return
+    threading.Thread(target=_warm_worker, daemon=True, name="warmup").start()
+    timings = _load_timings()
+    langs = WARMUP_LANGS[:MAX_MODELS]
+    steps = [_make_step("llm", timings=timings)] + _missing_lang_steps(langs, timings)
+    with _warm_cv:
+        _start_job_locked("boot", steps, langs)
+
+
+def _status_locked():
+    now = time.time()
+    steps = _warm["steps"]
+    # Expected seconds left per track; the tracks run in parallel, so the job
+    # finishes when the slowest track does.
+    remaining = {}
+    for st in steps:
+        if st["status"] in ("done", "error"):
+            left = 0.0
+        elif st["status"] == "running":
+            # Running over its estimate: assume ~1s more, so the bar creeps
+            # toward the end instead of stalling or claiming 100%.
+            left = max(st["eta"] - (now - st.get("started_at", now)), 1.0)
+        else:
+            left = st["eta"]
+        remaining[st["track"]] = remaining.get(st["track"], 0.0) + left
+    left = max(remaining.values()) if remaining else 0.0
+    elapsed = now - _warm["started_at"] if _warm["started_at"] else 0.0
+    if not _warm["busy"]:
+        progress = 1.0
+    elif elapsed + left <= 0:
+        progress = 0.0
+    else:
+        progress = min(elapsed / (elapsed + left), 0.99)
+    running = [st for st in steps if st["status"] == "running"]
+    # Prefer the speech step for the headline: it changes more often than Gemma.
+    current = next((st for st in running if st["track"] == "speech"), running[0] if running else None)
+    loading_langs = list(dict.fromkeys(st["lang"] for st in steps if st["lang"]))
+    return {
+        "job": _warm["job"],
+        "phase": _warm["phase"],
+        "busy": _warm["busy"],
+        "ready": not _warm["busy"],
+        "progress": round(progress, 4),
+        "elapsed": round(elapsed, 1),
+        "remaining": round(left, 1) if _warm["busy"] else 0.0,
+        "label": current["label"] if current else ("Finishing" if _warm["busy"] else "Ready"),
+        "loading_langs": [{"code": l, "name": LANG_NAMES.get(l, l)} for l in loading_langs],
+        "steps": [{"id": st["id"], "label": st["label"], "status": st["status"]} for st in steps],
+        "error": _warm["error"],
+    }
+
+
+def warmup_status():
+    with _warm_cv:
+        return _status_locked()
 
 
 PORT = 3000
@@ -260,6 +578,30 @@ class ProxyHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(str(e).encode('utf-8'))
 
+    def handle_warmup(self):
+        """GET: status JSON. POST {"langs": ["ar", "en"]}: load those in the background."""
+        try:
+            if self.command == 'POST':
+                n = int(self.headers.get('Content-Length', 0))
+                data = json.loads(self.rfile.read(n).decode('utf-8')) if n else {}
+                langs = data.get('langs') or []
+                if not isinstance(langs, list):
+                    raise ValueError('langs must be a list')
+                status = request_warm_languages(langs)
+            else:
+                status = warmup_status()
+            payload = json.dumps(status).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Content-Length', str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+        except Exception as e:
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(str(e).encode('utf-8'))
+
     def handle_volume(self):
         client_ip = self.client_address[0]
         if client_ip not in ('127.0.0.1', '::1', 'localhost'):
@@ -387,6 +729,9 @@ class ProxyHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         if self.path.startswith('/api/stt'):
             self.handle_stt()
             return
+        if self.path.startswith('/api/warmup'):
+            self.handle_warmup()
+            return
         if self.path.startswith('/api/volume'):
             self.handle_volume()
             return
@@ -401,6 +746,10 @@ class ProxyHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if self.path.startswith('/api/tts'):
             self.handle_tts()
+            return
+
+        if self.path.startswith('/api/warmup'):
+            self.handle_warmup()
             return
             
         if self.path.startswith('/api/volume'):
@@ -492,16 +841,7 @@ if __name__ == '__main__':
         if local_ip != "localhost":
             print(f"👉 {protocol}://{local_ip}:{PORT} (Local Network)")
         print(f"===========================================================")
-        def _prewarm_models():
-            try:
-                print("[Prewarm] Loading default English STT & TTS models into memory...", flush=True)
-                get_stt_recognizer("en")
-                get_tts_engine("en")
-                print("[Prewarm] Models pre-warmed successfully.", flush=True)
-            except Exception as e:
-                print(f"[Prewarm Error] {e}", flush=True)
-
-        threading.Thread(target=_prewarm_models, daemon=True).start()
+        start_warmup()
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:

@@ -50,6 +50,26 @@ export async function testConnectionAPI(endpointUrl, useProxy, apiKey) {
   return true
 }
 
+// Ask the backend to pre-load STT/TTS for the languages the lanes are set to,
+// so the first utterance after a language change doesn't pay the model load.
+// The response is the warm-up status (already busy if loading started); it is
+// broadcast so useWarmup() shows the loading bar without waiting for a poll.
+// A failure just means the model loads lazily as before.
+export function warmLanguages(langs) {
+  fetch("/api/warmup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ langs }),
+  })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((status) => {
+      if (status) {
+        window.dispatchEvent(new CustomEvent("warmup-status", { detail: status }))
+      }
+    })
+    .catch(() => {})
+}
+
 // POST base64 Float32 PCM (16 kHz mono) to the local Moonshine STT.
 export async function transcribeAudio(base64Data, sourceLangCode) {
   const response = await fetch("/api/stt", {
