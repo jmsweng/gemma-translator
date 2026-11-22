@@ -807,6 +807,12 @@ body {
   opacity: 0.35;
 }
 
+/* Lane language has no speech recognition yet: the label reads "listen only"
+   in that language, so keep it legible instead of fully dimmed. */
+.talk-button.listen-only:disabled {
+  opacity: 0.6;
+}
+
 /* Language picker overlay */
 .language-picker {
   position: absolute;
@@ -815,13 +821,15 @@ body {
   background: var(--bg-black);
   display: flex;
   flex-direction: column;
-  touch-action: none;
+  /* Vertical swipes scroll the grid; nothing else pans or zooms. */
+  touch-action: pan-y;
 }
 
 .language-picker-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   padding: 6px;
   gap: 6px;
 }
@@ -846,13 +854,22 @@ body {
   border-radius: 2px;
 }
 
-/* 3 x 2 grid: six tiles, each comfortably larger than a fingertip. */
+/* Three columns, two rows visible: each tile stays the size it was with six
+   languages, and further rows scroll into view. */
 .language-picker-grid {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  grid-auto-rows: 1fr;
+  grid-auto-rows: calc((100% - 6px) / 2);
   gap: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.language-picker-grid::-webkit-scrollbar {
+  display: none;
 }
 
 .language-tile {
@@ -863,6 +880,15 @@ body {
   font-size: 16px;
   font-weight: 700;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Small second line, e.g. LISTEN ONLY for a language without speech input. */
+.language-tile-note {
+  display: block;
+  margin-top: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  opacity: 0.8;
 }
 
 .language-tile.current {

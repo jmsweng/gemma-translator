@@ -37,6 +37,10 @@ import { playBlip } from "./utils/audio-blip"
 // talkLabel is the on-screen push-to-talk prompt, written in that language so
 // each person reads their own lane's button. simpleLabel is the banner shown
 // while simple-language mode is on. rtl flips the button's direction.
+// listenOnly marks a language with a voice but no speech recognition yet: that
+// lane can hear translations but its talk button is disabled, and talkLabel is
+// shown on the disabled button instead. Keep new languages at the end — lane
+// state is stored as an index into this list.
 const AVAILABLE_LANGUAGES = [
   {
     code: "ar",
@@ -86,6 +90,17 @@ const AVAILABLE_LANGUAGES = [
     ttsLang: "ko",
     talkLabel: "눌러서 말하기",
     simpleLabel: "쉬운 말 모드 켜짐",
+  },
+  {
+    // No Italian STT model exists yet (see claude/italian-stt-handoff.md), so
+    // Italian is output only: others can speak to an Italian listener.
+    code: "it",
+    name: "Italian",
+    voice: "tts",
+    ttsLang: "it",
+    talkLabel: "SOLO ASCOLTO",
+    simpleLabel: "LINGUAGGIO SEMPLICE ATTIVO",
+    listenOnly: true,
   },
 ]
 
@@ -317,6 +332,11 @@ function TranslatorApp({
   const handleRecordStart = useCallback(
     async (lane) => {
       if (isRecording) return
+      // Listen-only lane (no speech recognition for its language): ignore the
+      // Z/X keys too, not just the disabled on-screen button. Otherwise the
+      // backend would silently transcribe the audio as English.
+      const laneLang = AVAILABLE_LANGUAGES[lane === 1 ? lang1Index : lang2Index]
+      if (laneLang.listenOnly) return
       stopSpeaking()
 
       setActivePerson((prev) => {
@@ -331,7 +351,7 @@ function TranslatorApp({
         setActiveLaneRecording(null)
       }
     },
-    [isRecording, stopSpeaking, startRecording],
+    [isRecording, stopSpeaking, startRecording, lang1Index, lang2Index],
   )
 
   const handleRecordStop = useCallback(async () => {

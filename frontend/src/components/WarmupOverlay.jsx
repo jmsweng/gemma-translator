@@ -39,33 +39,38 @@ const SWAP_TEXT = {
   en: {
     loading: (x) => `Loading ${x}`,
     ready: "Ready",
-    names: { ar: "Arabic", en: "English", es: "Spanish", ja: "Japanese", zh: "Chinese", ko: "Korean" },
+    names: { ar: "Arabic", en: "English", es: "Spanish", ja: "Japanese", zh: "Chinese", ko: "Korean", it: "Italian" },
   },
   es: {
     loading: (x) => `Cargando ${x}`,
     ready: "Listo",
-    names: { ar: "árabe", en: "inglés", es: "español", ja: "japonés", zh: "chino", ko: "coreano" },
+    names: { ar: "árabe", en: "inglés", es: "español", ja: "japonés", zh: "chino", ko: "coreano", it: "italiano" },
   },
   ar: {
     loading: (x) => `جارٍ تحميل ${x}`,
     ready: "جاهز",
-    names: { ar: "العربية", en: "الإنجليزية", es: "الإسبانية", ja: "اليابانية", zh: "الصينية", ko: "الكورية" },
+    names: { ar: "العربية", en: "الإنجليزية", es: "الإسبانية", ja: "اليابانية", zh: "الصينية", ko: "الكورية", it: "الإيطالية" },
     rtl: true,
   },
   ja: {
     loading: (x) => `${x}を読み込み中`,
     ready: "準備完了",
-    names: { ar: "アラビア語", en: "英語", es: "スペイン語", ja: "日本語", zh: "中国語", ko: "韓国語" },
+    names: { ar: "アラビア語", en: "英語", es: "スペイン語", ja: "日本語", zh: "中国語", ko: "韓国語", it: "イタリア語" },
   },
   zh: {
     loading: (x) => `正在加载${x}`,
     ready: "已就绪",
-    names: { ar: "阿拉伯语", en: "英语", es: "西班牙语", ja: "日语", zh: "中文", ko: "韩语" },
+    names: { ar: "阿拉伯语", en: "英语", es: "西班牙语", ja: "日语", zh: "中文", ko: "韩语", it: "意大利语" },
+  },
+  it: {
+    loading: (x) => `Caricamento ${x}`,
+    ready: "Pronto",
+    names: { ar: "arabo", en: "inglese", es: "spagnolo", ja: "giapponese", zh: "cinese", ko: "coreano", it: "italiano" },
   },
   ko: {
     loading: (x) => `${x} 불러오는 중`,
     ready: "준비 완료",
-    names: { ar: "아랍어", en: "영어", es: "스페인어", ja: "일본어", zh: "중국어", ko: "한국어" },
+    names: { ar: "아랍어", en: "영어", es: "스페인어", ja: "일본어", zh: "중국어", ko: "한국어", it: "이탈리아어" },
   },
 }
 

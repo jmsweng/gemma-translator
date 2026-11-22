@@ -14,11 +14,25 @@
  * limitations under the License.
  */
 
-import React from "react"
+import React, { useEffect } from "react"
+import { useScrollHint } from "../hooks/useScrollHint"
 
 // Full-screen language chooser for touchscreen use. Opened by tapping a
 // lane's language readout. Tiles are sized for fingers, not cursors.
-export default function LanguagePicker({
+//
+// The grid shows two rows of three and scrolls vertically for the rest. Tiles
+// select on click rather than pointerdown so that a finger starting a swipe
+// to scroll doesn't pick whichever tile it landed on (Chromium suppresses the
+// click when the gesture turned into a scroll). The kiosk hides the cursor and
+// overlay scrollbars only show mid-drag, so a "more below" arrow marks that
+// the list continues.
+export default function LanguagePicker(props) {
+  if (props.laneId === null) return null
+  // Mounted fresh on each open, so useScrollHint attaches to a grid that exists.
+  return <PickerPanel {...props} />
+}
+
+function PickerPanel({
   laneId,
   languages,
   currentIndex,
@@ -26,7 +40,13 @@ export default function LanguagePicker({
   onSelect,
   onClose,
 }) {
-  if (laneId === null) return null
+  const { ref: gridRef, hasMore } = useScrollHint([languages.length])
+
+  // Open with the lane's current language in view.
+  useEffect(() => {
+    gridRef.current?.children[currentIndex]?.scrollIntoView({ block: "nearest" })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="language-picker" onPointerDown={onClose}>
@@ -40,21 +60,28 @@ export default function LanguagePicker({
             ✕
           </button>
         </div>
-        <div className="language-picker-grid">
-          {languages.map((l, i) => (
-            <button
-              key={l.code}
-              className={`language-tile ${i === currentIndex ? "current" : ""} ${
-                i === otherIndex ? "taken" : ""
-              }`}
-              onPointerDown={(e) => {
-                e.preventDefault()
-                onSelect(i)
-              }}
-            >
-              {l.name.split(" ")[0].toUpperCase()}
-            </button>
-          ))}
+        <div className="scroll-hint-wrap">
+          <div className="language-picker-grid" ref={gridRef}>
+            {languages.map((l, i) => (
+              <button
+                key={l.code}
+                className={`language-tile ${i === currentIndex ? "current" : ""} ${
+                  i === otherIndex ? "taken" : ""
+                }`}
+                onClick={() => onSelect(i)}
+              >
+                {l.name.split(" ")[0].toUpperCase()}
+                {l.listenOnly && (
+                  <span className="language-tile-note">LISTEN ONLY</span>
+                )}
+              </button>
+            ))}
+          </div>
+          {hasMore && (
+            <div className="scroll-hint" aria-hidden="true">
+              ▼
+            </div>
+          )}
         </div>
       </div>
     </div>

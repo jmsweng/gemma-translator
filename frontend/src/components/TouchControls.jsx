@@ -22,10 +22,12 @@ import React from "react"
 function TalkButton({ lane, language, recordingLane, onStart, onStop }) {
   const isRecording = recordingLane === lane
   const otherBusy = recordingLane !== null && recordingLane !== lane
+  // No speech recognition for this language yet; talkLabel says so.
+  const listenOnly = !!language.listenOnly
 
   const handleDown = (e) => {
     e.preventDefault()
-    if (otherBusy) return
+    if (otherBusy || listenOnly) return
     e.currentTarget.setPointerCapture?.(e.pointerId)
     onStart(lane)
   }
@@ -40,10 +42,10 @@ function TalkButton({ lane, language, recordingLane, onStart, onStop }) {
 
   return (
     <button
-      className={`talk-button ${isRecording ? "recording" : ""}`}
+      className={`talk-button ${isRecording ? "recording" : ""} ${listenOnly ? "listen-only" : ""}`}
       lang={language.code}
       dir={language.rtl ? "rtl" : "ltr"}
-      disabled={otherBusy}
+      disabled={otherBusy || listenOnly}
       onPointerDown={handleDown}
       onPointerUp={handleUp}
       onPointerCancel={handleUp}
