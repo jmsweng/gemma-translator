@@ -35,7 +35,8 @@ import { playBlip } from "./utils/audio-blip"
 
 // Languages offered on each lane's revolver; ttsLang selects the backend voice.
 // talkLabel is the on-screen push-to-talk prompt, written in that language so
-// each person reads their own lane's button. rtl flips the button's direction.
+// each person reads their own lane's button. simpleLabel is the banner shown
+// while simple-language mode is on. rtl flips the button's direction.
 const AVAILABLE_LANGUAGES = [
   {
     code: "ar",
@@ -43,6 +44,7 @@ const AVAILABLE_LANGUAGES = [
     voice: "tts",
     ttsLang: "ar",
     talkLabel: "اضغط للتحدث",
+    simpleLabel: "وضع اللغة المبسطة مفعّل",
     rtl: true,
   },
   {
@@ -51,6 +53,7 @@ const AVAILABLE_LANGUAGES = [
     voice: "tts",
     ttsLang: "en",
     talkLabel: "HOLD TO TALK",
+    simpleLabel: "SIMPLE LANGUAGE ON",
   },
   {
     code: "es",
@@ -58,6 +61,7 @@ const AVAILABLE_LANGUAGES = [
     voice: "tts",
     ttsLang: "es",
     talkLabel: "MANTÉN PARA HABLAR",
+    simpleLabel: "LENGUAJE SENCILLO ACTIVADO",
   },
   {
     code: "ja",
@@ -65,6 +69,7 @@ const AVAILABLE_LANGUAGES = [
     voice: "tts",
     ttsLang: "ja",
     talkLabel: "押して話す",
+    simpleLabel: "やさしい言葉モード オン",
   },
   {
     code: "zh",
@@ -72,6 +77,7 @@ const AVAILABLE_LANGUAGES = [
     voice: "tts",
     ttsLang: "zh",
     talkLabel: "按住说话",
+    simpleLabel: "简明语言模式已开启",
   },
   {
     code: "ko",
@@ -79,6 +85,7 @@ const AVAILABLE_LANGUAGES = [
     voice: "tts",
     ttsLang: "ko",
     talkLabel: "눌러서 말하기",
+    simpleLabel: "쉬운 말 모드 켜짐",
   },
 ]
 
@@ -569,6 +576,22 @@ function TranslatorApp({
         isApproved={isApproved}
         onApprove={handleApproveRoundTrip}
       />
+
+      {/* Simple-language mode banner: one line per lane, each in that lane's
+          language, so both people know translations are being simplified
+          and round-trip checked. */}
+      {simpleMode && (
+        <div className="simple-mode-banner" aria-live="polite">
+          {[lang1Index, lang2Index].map((i) => {
+            const l = AVAILABLE_LANGUAGES[i]
+            return (
+              <span key={l.code} lang={l.code} dir={l.rtl ? "rtl" : "ltr"}>
+                {l.simpleLabel}
+              </span>
+            )
+          })}
+        </div>
+      )}
 
       <main className="translator-workspace">
         <div className="languages-container">
