@@ -40,6 +40,11 @@ export default function ResponseDrawer({
   awaitingApproval = false,
   isApproved = false,
   onApprove = () => {},
+  // Cancel button beside the speaker's bubble, shown while a translation is
+  // in progress or being spoken, for when the transcript shows the speech
+  // was misheard.
+  canCancel = false,
+  onCancel = () => {},
 }) {
   // Determine if we have any data to show (or if the drawer was explicitly activated)
   const hasData = isActive || transcriptionSource !== ""
@@ -117,6 +122,27 @@ export default function ResponseDrawer({
                       <path d="M4 12.5l5.5 5.5L20 6.5" />
                     </svg>
                   ) : null}
+                </button>
+              ) : null}
+              {canCancel ? (
+                <button
+                  className="cancel-translation"
+                  onClick={onCancel}
+                  aria-label="Cancel this translation"
+                  title="Cancel (Esc)"
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3.5"
+                    strokeLinecap="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M6 6l12 12M18 6L6 18" />
+                  </svg>
                 </button>
               ) : null}
             </div>

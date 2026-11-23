@@ -1038,6 +1038,32 @@ body {
   }
 }
 
+/* Cancel button beside the speaker's bubble (both modes). Same size and
+   placement as the round-trip checkbox, but steady rather than pulsing: it
+   is an escape hatch, not a step the speaker has to take. */
+.cancel-translation {
+  flex-shrink: 0;
+  align-self: flex-end;
+  width: 34px;
+  height: 34px;
+  margin: 0 4px 2px;
+  background: var(--bg-black);
+  border: 2px solid var(--border-color);
+  border-radius: 3px;
+  color: var(--red-bright);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cancel-translation:active {
+  background: var(--red-bright);
+  color: var(--bg-black);
+}
+
 /* ---- Model warm-up loading bar (components/WarmupOverlay.jsx) ---- */
 
 /* Boot: full screen, above everything (settings is 1000), swallows input. */

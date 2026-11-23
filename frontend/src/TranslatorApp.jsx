@@ -158,6 +158,14 @@ function TranslatorApp({
   const [awaitingApproval, setAwaitingApproval] = useState(false)
   const [isApproved, setIsApproved] = useState(false)
 
+  // Cancel: the speaker can stop a translation if the transcript shows the
+  // speech was misheard. The button shows from when the transcript appears
+  // until the translation has finished being spoken. Each recording is a
+  // "job"; a job that was cancelled or replaced by a newer recording must not
+  // touch the screen or start speaking when its pending requests come back.
+  const [canCancel, setCanCancel] = useState(false)
+  const jobRef = useRef(null)
+
 
   const { isRecording, startRecording, stopRecording, analyser, micError } =
     useAudioRecorder()
@@ -209,12 +217,12 @@ function TranslatorApp({
   // the backend synthesizes one at a time but in no particular order, so
   // firing them all at once could make the first chunk wait behind later ones.
   const playTTS = useCallback(
-    (text, targetLang) => {
-      if (!text) return
+    (text, targetLang, onEnd = () => {}) => {
+      if (!text) return onEnd()
       stopSpeaking()
 
       const chunks = splitTextIntoSpeechChunks(text)
-      if (chunks.length === 0) return
+      if (chunks.length === 0) return onEnd()
 
       const session = { cancelled: false, urls: [] }
       ttsSessionRef.current = session
@@ -246,13 +254,17 @@ function TranslatorApp({
         if (session.cancelled) return
         console.error("TTS playback error:", e)
         stopSpeaking()
+        onEnd()
         alert("TTS playback failed. Backend server may be offline.")
       }
 
+      // onEnd runs once speech finishes or fails, not when it is stopped or
+      // superseded (whoever stopped it handles that).
       const playChunk = (i) => {
         if (session.cancelled) return
         if (i >= chunks.length) {
           stopSpeaking()
+          onEnd()
           return
         }
         audio[i]
@@ -380,6 +392,16 @@ function TranslatorApp({
 
   // Translation Pipeline: mic audio -> transcription -> translation -> speech.
   const processTranslation = async (lane, base64Data) => {
+    // A new recording replaces whatever was still in flight.
+    jobRef.current?.controller.abort()
+    const job = { controller: new AbortController(), cancelled: false }
+    jobRef.current = job
+    const live = () => jobRef.current === job && !job.cancelled
+    const finished = () => {
+      if (jobRef.current === job) setCanCancel(false)
+    }
+    setCanCancel(false)
+
     setIsDrawerOpen(true)
     setSourceLane(lane)
 
@@ -404,6 +426,7 @@ function TranslatorApp({
       setTranscriptionData((prev) => ({ ...prev, text: "Listening..." }))
       transcribedText = await transcribeAudio(base64Data, src.code)
     } catch (err) {
+      if (!live()) return
       console.error(err)
       setTranscriptionData((prev) => ({
         ...prev,
@@ -413,12 +436,16 @@ function TranslatorApp({
       return
     }
 
+    if (!live()) return
     setTranscriptionData((prev) => ({ ...prev, text: transcribedText }))
 
     if (!transcribedText.trim()) {
       setTranslationData((prev) => ({ ...prev, text: "(No speech detected)" }))
       return
     }
+
+    // The speaker can now read what was heard, and cancel if it's wrong.
+    setCanCancel(true)
 
     // 2. Translation. Simple mode folds the plain-language instruction into
     // this same pass, so there is no extra round trip.
@@ -427,18 +454,21 @@ function TranslatorApp({
       : NORMAL_PROMPT(src, dst)
 
     try {
-      const result = await translateText(transcribedText, {
-        ...config,
-        modelName: config.modelName,
-        systemPrompt,
-      })
+      const result = await translateText(
+        transcribedText,
+        { ...config, modelName: config.modelName, systemPrompt },
+        job.controller.signal,
+      )
+      if (!live()) return
 
       // Plain mode: show it and speak it straight away.
       if (!simpleMode) {
         setTranslationData((prev) => ({ ...prev, text: result.translation }))
         setMetaText(`Duration: ${result.duration}s | Tokens: ${result.tokens}`)
         if (config.enableTts) {
-          playTTS(result.translation, dst.ttsLang)
+          playTTS(result.translation, dst.ttsLang, finished)
+        } else {
+          finished()
         }
         return
       }
@@ -455,16 +485,18 @@ function TranslatorApp({
 
       let backText = ""
       try {
-        const back = await translateText(result.translation, {
-          ...config,
-          modelName: config.modelName,
-          systemPrompt: NORMAL_PROMPT(dst, src),
-        })
+        const back = await translateText(
+          result.translation,
+          { ...config, modelName: config.modelName, systemPrompt: NORMAL_PROMPT(dst, src) },
+          job.controller.signal,
+        )
+        if (!live()) return
         backText = back.translation
         setMetaText(
           `Duration: ${(Number(result.duration) + Number(back.duration)).toFixed(2)}s | Tokens: ${result.tokens + back.tokens}`,
         )
       } catch (err) {
+        if (!live()) return
         // A failed round trip must not strand the translation. Fall back to
         // confirming against the raw transcription instead.
         console.error(err)
@@ -485,10 +517,31 @@ function TranslatorApp({
       setPendingTranslation({ text: result.translation, ttsLang: dst.ttsLang })
       setAwaitingApproval(true)
     } catch (err) {
+      if (!live()) return
+      finished()
       console.error(err)
       setTranslationData((prev) => ({ ...prev, text: `Error: ${err.message}` }))
     }
   }
+
+  // Speaker tapped cancel (or pressed Escape): stop waiting for the
+  // translation, stop or skip the speech, and leave the lane ready to talk.
+  const handleCancel = useCallback(() => {
+    const job = jobRef.current
+    if (!job || job.cancelled) return
+    job.cancelled = true
+    job.controller.abort()
+    stopSpeaking()
+    setCanCancel(false)
+    setAwaitingApproval(false)
+    setIsApproved(false)
+    setPendingTranslation(null)
+    setTranslationData((prev) => ({ ...prev, text: "— cancelled —" }))
+    setMetaText("")
+    playBlip("speaker")
+  }, [stopSpeaking])
+  const handleCancelRef = useRef(handleCancel)
+  handleCancelRef.current = handleCancel
 
   // Speaker ticked the box: reveal the held translation and speak it.
   const handleApproveRoundTrip = useCallback(() => {
@@ -497,8 +550,14 @@ function TranslatorApp({
     setAwaitingApproval(false)
     setTranslationData((prev) => ({ ...prev, text: pendingTranslation.text }))
     playBlip("speaker")
+    const job = jobRef.current
+    const finished = () => {
+      if (jobRef.current === job) setCanCancel(false)
+    }
     if (config.enableTts) {
-      playTTS(pendingTranslation.text, pendingTranslation.ttsLang)
+      playTTS(pendingTranslation.text, pendingTranslation.ttsLang, finished)
+    } else {
+      finished()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingTranslation, config.enableTts])
@@ -512,6 +571,13 @@ function TranslatorApp({
       if (inputLockedRef.current) return
       if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return
       const key = e.key.toLowerCase()
+
+      // Escape cancels the current translation, in either keyboard mode.
+      if (key === "escape") {
+        e.preventDefault()
+        handleCancelRef.current()
+        return
+      }
 
       if (config.keyboardMode === "landscape") {
         if (key === " " || e.key === "Spacebar") {
@@ -595,6 +661,8 @@ function TranslatorApp({
         awaitingApproval={awaitingApproval}
         isApproved={isApproved}
         onApprove={handleApproveRoundTrip}
+        canCancel={canCancel}
+        onCancel={handleCancel}
       />
 
       {/* Simple-language mode banner: one line per lane, each in that lane's

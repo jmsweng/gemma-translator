@@ -141,6 +141,8 @@ Everything the keyboard does can also be done on the touchscreen:
 
 If you pick the language the other lane already has, the two lanes swap. The setting is remembered across restarts (`localStorage` key `touchLanguageMode`).
 
+- **Cancel a translation:** if the transcript shows your speech was misheard, tap the **✕** next to your transcript. It appears as soon as the transcript does and stays until the translation has been spoken. Cancelling stops the translation and any speech; hold talk to try again. Pressing **Esc** does the same.
+
 ## Simple-Language Mode
 
 The speech-bubble button at the top right turns simple-language mode on and off. It is off by default and resets to off on restart. While it's on, a banner at the top says so in both lanes' languages.
@@ -197,6 +199,7 @@ Notes:
 - **Input focus guard:** all shortcuts are ignored while focus is on a configuration field (`<input>`, `<textarea>`, or `<select>`) — e.g. when editing the API endpoint or settings.
 - **Recording lock:** language rotation is blocked while a recording is in progress.
 - **Boot lock:** shortcuts are ignored while the boot loading screen is showing.
+- **Esc cancels:** stops the current translation and any speech, same as the on-screen ✕.
 - **Touch works too:** every action is also available on the touchscreen (see [Touchscreen Controls](#touchscreen-controls)).
 
 ### Switching modes

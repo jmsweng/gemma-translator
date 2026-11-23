@@ -104,7 +104,7 @@ function generatePayloadJSON(transcribedText, model, systemPrompt) {
 
 // One chat-completions round trip. Callers supply the system prompt (which
 // pins the expected JSON shape) and pick the field they want back out.
-async function requestCompletion(userText, config) {
+async function requestCompletion(userText, config, signal) {
   const { endpointUrl, useProxy, apiKey, modelName, systemPrompt } = config
   const baseUrl = getNormalizedBaseUrl(endpointUrl)
   const targetUrl = `${baseUrl}/chat/completions`
@@ -124,6 +124,7 @@ async function requestCompletion(userText, config) {
     method: "POST",
     headers,
     body: payload,
+    signal,
   })
   const requestDuration = ((Date.now() - startRequestTime) / 1000).toFixed(2)
 
@@ -172,9 +173,12 @@ function extractJsonField(modelResponse, field) {
   }
 }
 
-// Expects a system prompt asking for {"translation": ...}.
-export async function translateText(transcribedText, config) {
-  const result = await requestCompletion(transcribedText, config)
+// Expects a system prompt asking for {"translation": ...}. Pass an
+// AbortSignal to let the speaker cancel; the fetch then rejects with an
+// AbortError. (The backend proxy still waits for litert-lm to finish, so
+// Gemma may keep generating the abandoned reply for a few seconds.)
+export async function translateText(transcribedText, config, signal) {
+  const result = await requestCompletion(transcribedText, config, signal)
   return {
     translation: extractJsonField(result.content, "translation"),
     duration: result.duration,

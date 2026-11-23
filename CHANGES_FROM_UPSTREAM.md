@@ -210,6 +210,20 @@ Upgraded from 0.0.65 (`backend/requirements.txt`, `backend/server.py`).
   swiping to scroll doesn't pick a language, and a ▼ shows when there's more
   below. The Italian tile is marked LISTEN ONLY.
 
+### 10. Cancel a misheard translation
+
+A ✕ button sits next to the speaker's transcript from when it appears until
+the translation has been spoken (`ResponseDrawer.jsx`, `TranslatorApp.jsx`).
+If speech recognition got it wrong, the speaker taps it (or presses Esc) and
+the translation request is aborted, speech is stopped or never starts, and
+the bubble shows "— cancelled —". There's no toggle and no added delay: the
+transcript appears about a second after release and Gemma takes a few seconds
+to translate, which is the window to cancel in. It works in simple mode too,
+including while the round-trip check waits for approval. A new recording
+replaces one still in flight, so a late reply can't overwrite the newer
+result. The backend proxy still waits for litert-lm, so Gemma may finish the
+abandoned translation in the background before starting the next one.
+
 ## API and configuration added
 
 ### `GET /api/warmup`
