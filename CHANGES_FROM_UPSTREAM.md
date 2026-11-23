@@ -178,9 +178,11 @@ Upgraded from 0.0.65 (`backend/requirements.txt`, `backend/server.py`).
   used Base for es/ja/zh/ar. The choices come from FLEURS clips scored on the
   Pi; the numbers are in the comment above `STT_ARCH`. Chinese (Base) and
   Korean use the non-commercial Moonshine Community License.
-- **Transcriber options:** `max_tokens_per_second` is 13.0 for ja/zh/ar/ko,
-  since the 6.5 default can cut off output in those scripts.
-  `STT_VAD_THRESHOLD` sets `vad_threshold` for all languages, for testing.
+- **Transcriber options:** `max_tokens_per_second` is 13.0 for ja/zh/ar and
+  26.0 for ko, since the 6.5 default cuts off output in those scripts (13.0
+  still cut off Korean). Korean also uses `vad_threshold` 0.6, which stopped
+  it inventing a phrase during pauses; other languages keep the default 0.5.
+  `STT_VAD_THRESHOLD` overrides `vad_threshold` for all languages, for testing.
 - **Eviction and memory:** an evicted model is `close()`d and the server then
   calls glibc's `malloc_trim(0)`, and `start.sh` sets `MALLOC_ARENA_MAX=2`.
   Without these, memory freed on a language swap stayed stranded in

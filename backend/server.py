@@ -63,14 +63,20 @@ STT_ARCH = {
 # (one mid-character); at 26.0, none were and CER fell 11.2% -> 10.2%. A higher
 # cap also lets a hallucinated tail run longer, so don't raise it further
 # without re-running eval_stt.py.
+# vad_threshold (default 0.5) is 0.6 for Korean only. In eval_pauses.py runs
+# (FLEURS clips with 2 s of kiosk room noise inserted), Korean at 0.5 invented
+# a phrase ("저는 매일 밤에 노래...") and averaged 3.1 extra chars per clip with a
+# mid-sentence pause; at 0.6 that phrase was gone, mid-pause extras halved to
+# 1.5 and CER fell 10.9% -> 10.0%. Other languages showed no clear gain, and
+# en/zh got worse as the threshold rose, so they stay at the default.
 STT_OPTIONS = {
     "ja": {"max_tokens_per_second": "13.0"},
     "zh": {"max_tokens_per_second": "13.0"},
     "ar": {"max_tokens_per_second": "13.0"},
-    "ko": {"max_tokens_per_second": "26.0"},
+    "ko": {"max_tokens_per_second": "26.0", "vad_threshold": "0.6"},
 }
-# Optional global VAD threshold override for testing (default 0.5), e.g.
-# STT_VAD_THRESHOLD=0.6 ./start.sh
+# Optional VAD threshold override for testing, applied to every language
+# (including Korean's 0.6 above), e.g. STT_VAD_THRESHOLD=0.6 ./start.sh
 STT_VAD_THRESHOLD = os.environ.get("STT_VAD_THRESHOLD", "").strip()
 _stt_recognizers = OrderedDict()  # language -> recognizer
 # RLock (reentrant): handle_stt holds the lock across get_stt_recognizer() + inference,
