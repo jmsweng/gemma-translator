@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import React, { useEffect } from "react"
+import React, { useEffect, useState } from "react"
 import { useScrollHint } from "../hooks/useScrollHint"
 
 // Full-screen language chooser for touchscreen use. Opened by tapping a
@@ -24,8 +24,9 @@ import { useScrollHint } from "../hooks/useScrollHint"
 // select on click rather than pointerdown so that a finger starting a swipe
 // to scroll doesn't pick whichever tile it landed on (Chromium suppresses the
 // click when the gesture turned into a scroll). The kiosk hides the cursor and
-// overlay scrollbars only show mid-drag, so a "more below" arrow marks that
-// the list continues.
+// overlay scrollbars only show mid-drag, so a finger-sized arrow button in the
+// corner marks that the list continues: ▼ scrolls down one row, and at the
+// bottom it becomes ▲ and returns to the top.
 export default function LanguagePicker(props) {
   if (props.laneId === null) return null
   // Mounted fresh on each open, so useScrollHint attaches to a grid that exists.
@@ -41,6 +42,18 @@ function PickerPanel({
   onClose,
 }) {
   const { ref: gridRef, hasMore } = useScrollHint([languages.length])
+  const [canScrollUp, setCanScrollUp] = useState(false)
+
+  const scrollStep = () => {
+    const el = gridRef.current
+    if (!el) return
+    if (hasMore) {
+      // One row: two rows fill the view, with a 6px gap between them.
+      el.scrollBy({ top: (el.clientHeight + 6) / 2, behavior: "smooth" })
+    } else {
+      el.scrollTo({ top: 0, behavior: "smooth" })
+    }
+  }
 
   // Open with the lane's current language in view.
   useEffect(() => {
@@ -61,7 +74,11 @@ function PickerPanel({
           </button>
         </div>
         <div className="scroll-hint-wrap">
-          <div className="language-picker-grid" ref={gridRef}>
+          <div
+            className="language-picker-grid"
+            ref={gridRef}
+            onScroll={(e) => setCanScrollUp(e.currentTarget.scrollTop > 4)}
+          >
             {languages.map((l, i) => (
               <button
                 key={l.code}
@@ -77,10 +94,14 @@ function PickerPanel({
               </button>
             ))}
           </div>
-          {hasMore && (
-            <div className="scroll-hint" aria-hidden="true">
-              ▼
-            </div>
+          {(hasMore || canScrollUp) && (
+            <button
+              className="picker-scroll-btn"
+              onClick={scrollStep}
+              aria-label={hasMore ? "More languages" : "Back to top"}
+            >
+              {hasMore ? "▼" : "▲"}
+            </button>
           )}
         </div>
       </div>

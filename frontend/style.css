@@ -813,11 +813,14 @@ body {
   opacity: 0.6;
 }
 
-/* Language picker overlay */
+/* Language picker overlay. Full-screen and modal, so it sits above the
+   simple-mode / settings buttons (.config-wrap-right, z 1000), which otherwise
+   cover its close button, and above the swap bar (950). Below the boot screen
+   (.warmup-boot, 1100), which must cover everything while models load. */
 .language-picker {
   position: absolute;
   inset: 0;
-  z-index: 900;
+  z-index: 1050;
   background: var(--bg-black);
   display: flex;
   flex-direction: column;
@@ -880,6 +883,31 @@ body {
   font-size: 16px;
   font-weight: 700;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Scroll button in the picker's bottom-right corner (▼ next row, ▲ back to
+   top). Finger-sized, unlike the drawer's passive .scroll-hint; sits over the
+   corner of the last visible tile, whose label stays clear of it. */
+.picker-scroll-btn {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 52px;
+  height: 44px;
+  background: var(--bg-black);
+  border: 2px solid var(--border-color);
+  border-radius: 3px;
+  color: var(--red-bright);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.picker-scroll-btn:active {
+  background: var(--red-bright);
+  color: var(--bg-black);
 }
 
 /* Small second line, e.g. LISTEN ONLY for a language without speech input. */
