@@ -38,8 +38,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SUPPORTED_STT_LANGS = {"en", "ar", "es", "ja", "zh", "ko"}
 MAX_MODELS = 2
 # STT model architecture per language, pinned so a moonshine-voice upgrade can't
-# silently swap models. Chosen from FLEURS test clips scored with eval_stt.py on
-# the Pi (30 clips each; error rate, compute s per s of audio):
+# silently swap models. Chosen by transcribing FLEURS test clips (real speakers,
+# known transcripts) on the Pi, 2026-11-22 (30 clips each; error rate, compute s
+# per s of audio):
 #   en  Medium Streaming 12.1% / 0.38   (Base 14.1% / 0.14)
 #   es  Small Streaming   5.8% / 0.20   (Base  2.0% / 0.82: too slow to talk to)
 #   ja  Small Streaming   8.3% / 0.17   (Base 14.6% / 0.20, cut off endings)
@@ -62,9 +63,9 @@ STT_ARCH = {
 # Korean needs more: at 13.0, 4 of 30 FLEURS ko_kr clips were cut off mid-word
 # (one mid-character); at 26.0, none were and CER fell 11.2% -> 10.2%. A higher
 # cap also lets a hallucinated tail run longer, so don't raise it further
-# without re-running eval_stt.py.
-# vad_threshold (default 0.5) is 0.6 for Korean only. In eval_pauses.py runs
-# (FLEURS clips with 2 s of kiosk room noise inserted), Korean at 0.5 invented
+# without re-measuring on FLEURS clips.
+# vad_threshold (default 0.5) is 0.6 for Korean only. On FLEURS clips with 2 s
+# of kiosk room noise inserted before, after and mid-speech, Korean at 0.5 invented
 # a phrase ("저는 매일 밤에 노래...") and averaged 3.1 extra chars per clip with a
 # mid-sentence pause; at 0.6 that phrase was gone, mid-pause extras halved to
 # 1.5 and CER fell 10.9% -> 10.0%. Other languages showed no clear gain, and
